@@ -1,0 +1,17 @@
+{
+  "games": [
+    {
+      "id": "sample-nes",
+      "title": "Sample NES",
+      "platform": "NES",
+      "category": "Action",
+      "rom": "roms/sample.nes",
+      "cover": "covers/sample.png"
+    }
+  ],
+  "cores": {
+    "NES": {
+      "arm64-v8a": "cores/arm64-v8a/fceumm_libretro_android.so"
+    }
+  }
+}

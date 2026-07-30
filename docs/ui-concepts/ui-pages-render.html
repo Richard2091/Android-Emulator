@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FC NES Game Hall UI Concepts</title>
+  <style>
+    :root {
+      --bg: #071013;
+      --panel: #0b171b;
+      --panel-2: #101d22;
+      --line: rgba(218, 241, 244, 0.22);
+      --line-strong: rgba(231, 251, 255, 0.42);
+      --text: #f2fbfc;
+      --muted: #8da5aa;
+      --cyan: #35f1dd;
+      --cyan-2: #1aaef0;
+      --green: #68dc9e;
+      --orange: #f7b35c;
+      --red: #ef6b6b;
+      --radius: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: #020608;
+      color: var(--text);
+      font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+    }
+
+    .screen {
+      width: 1920px;
+      height: 1080px;
+      display: grid;
+      grid-template-columns: 346px 1fr;
+      background:
+        radial-gradient(circle at 68% 18%, rgba(53, 241, 221, 0.12), transparent 30%),
+        radial-gradient(circle at 80% 88%, rgba(26, 174, 240, 0.12), transparent 34%),
+        linear-gradient(135deg, #071013 0%, #0a1216 48%, #05090c 100%);
+      position: relative;
+    }
+
+    .screen::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.13) 1.2px, transparent 1.3px);
+      background-size: 8px 8px;
+      opacity: 0.14;
+      mix-blend-mode: screen;
+    }
+
+    .sidebar {
+      position: relative;
+      z-index: 1;
+      padding: 80px 28px 40px 38px;
+      border-right: 2px solid rgba(218, 241, 244, 0.22);
+      background:
+        radial-gradient(circle at 26% 7%, rgba(53, 241, 221, 0.08), transparent 28%),
+        linear-gradient(180deg, rgba(7, 17, 21, 0.95), rgba(4, 10, 13, 0.98));
+    }
+
+    .sidebar::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.18) 1.15px, transparent 1.3px);
+      background-size: 8px 8px;
+      opacity: 0.18;
+      mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.76) 48%, transparent 100%);
+    }
+
+    .console {
+      width: 242px;
+      height: 116px;
+      background: url("./sidebar-logo-reference.png") center / contain no-repeat;
+      position: relative;
+      margin: 0 0 45px 22px;
+    }
+
+    .brand h1 {
+      margin: 0 0 18px;
+      font-size: 64px;
+      line-height: 1;
+      letter-spacing: 0;
+      font-weight: 900;
+    }
+
+    .brand p {
+      margin: 0 0 48px;
+      color: var(--cyan);
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+
+    .nav {
+      display: grid;
+      gap: 25px;
+    }
+
+    .nav-item {
+      height: 90px;
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      align-items: center;
+      padding: 0 26px;
+      border-radius: 16px;
+      color: rgba(242, 251, 252, 0.82);
+      font-size: 30px;
+      font-weight: 700;
+      border: 1px solid transparent;
+    }
+
+    .nav-item svg {
+      width: 42px;
+      height: 42px;
+      stroke: currentColor;
+      stroke-width: 2.4;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .nav-item.active {
+      color: var(--text);
+      border: 3px solid rgba(53, 241, 221, 0.95);
+      background: linear-gradient(135deg, rgba(53, 241, 221, 0.23), rgba(53, 241, 221, 0.06));
+      box-shadow: 0 0 0 1px rgba(53, 241, 221, 0.3), 0 0 22px rgba(53, 241, 221, 0.66), inset 0 0 24px rgba(53, 241, 221, 0.08);
+    }
+
+    .main {
+      position: relative;
+      z-index: 1;
+      padding: 70px 66px 62px;
+      min-width: 0;
+    }
+
+    .page-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin: 0 0 30px;
+    }
+
+    .page-title h2 {
+      margin: 0;
+      font-size: 42px;
+      line-height: 1.1;
+      font-weight: 900;
+    }
+
+    .page-title .sub {
+      color: var(--muted);
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .grid {
+      display: grid;
+      gap: 32px;
+    }
+
+    .grid.cols-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .grid.cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card {
+      min-width: 0;
+      height: 260px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      position: relative;
+      border: 2px solid rgba(220, 241, 244, 0.24);
+      background: #15262b;
+      box-shadow: 0 18px 34px rgba(0, 0, 0, 0.35);
+    }
+
+    .card.focused {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 5px rgba(53, 241, 221, 0.16), 0 0 28px rgba(53, 241, 221, 0.72), 0 24px 42px rgba(0, 0, 0, 0.42);
+    }
+
+    .cover {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 76% 22%, rgba(255, 255, 255, 0.34), transparent 12%),
+        radial-gradient(circle at 34% 42%, rgba(255, 255, 255, 0.14), transparent 22%),
+        linear-gradient(135deg, var(--c1), var(--c2));
+    }
+
+    .cover::before {
+      content: "";
+      position: absolute;
+      left: 11%;
+      top: 16%;
+      width: 36%;
+      height: 50%;
+      border-radius: 20px 20px 8px 8px;
+      background:
+        linear-gradient(160deg, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0.08)),
+        radial-gradient(circle at 50% 22%, rgba(0, 0, 0, 0.32) 0 10px, transparent 11px);
+      opacity: 0.72;
+      transform: skewX(-8deg);
+    }
+
+    .cover::after {
+      content: "";
+      position: absolute;
+      right: 10%;
+      bottom: 22%;
+      width: 42%;
+      height: 14%;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.25);
+      box-shadow: -54px -54px 0 rgba(255, 255, 255, 0.13), -120px -12px 0 rgba(255, 255, 255, 0.1);
+      transform: rotate(-18deg);
+    }
+
+    .star {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      width: 36px;
+      height: 36px;
+      color: #f5fbff;
+      filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.55));
+    }
+
+    .star.filled {
+      color: #ffe36e;
+    }
+
+    .card-title {
+      position: absolute;
+      left: 24px;
+      right: 20px;
+      bottom: 22px;
+      font-size: 31px;
+      line-height: 1.1;
+      font-weight: 900;
+      text-shadow: 0 4px 14px rgba(0, 0, 0, 0.75);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .search-box {
+      height: 98px;
+      margin-bottom: 34px;
+      border-radius: 16px;
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      align-items: center;
+      padding: 0 30px;
+      border: 2px solid var(--cyan);
+      background: linear-gradient(135deg, rgba(53, 241, 221, 0.18), rgba(8, 20, 24, 0.74));
+      box-shadow: 0 0 32px rgba(53, 241, 221, 0.34);
+      font-size: 34px;
+      font-weight: 800;
+    }
+
+    .search-box svg {
+      width: 42px;
+      height: 42px;
+      stroke: var(--text);
+      stroke-width: 2.5;
+      fill: none;
+    }
+
+    .settings {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 34px;
+    }
+
+    .detail {
+      display: grid;
+      grid-template-rows: 430px 1fr;
+      gap: 34px;
+      height: 820px;
+    }
+
+    .detail-top {
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      gap: 42px;
+      align-items: start;
+    }
+
+    .detail-cover {
+      position: relative;
+      min-width: 0;
+      width: 400px;
+      height: 400px;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 3px solid var(--cyan);
+      background: #14252b;
+      box-shadow: 0 0 0 5px rgba(53, 241, 221, 0.12), 0 0 36px rgba(53, 241, 221, 0.52), 0 28px 54px rgba(0, 0, 0, 0.42);
+    }
+
+    .detail-cover .cover::before {
+      width: 34%;
+      height: 46%;
+      left: 14%;
+      top: 18%;
+    }
+
+    .detail-info {
+      display: grid;
+      grid-template-rows: auto auto;
+      gap: 30px;
+      min-width: 0;
+    }
+
+    .detail-head {
+      display: grid;
+      grid-template-columns: 1fr 64px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .detail-head h2 {
+      margin: 0 0 14px;
+      font-size: 64px;
+      line-height: 1.05;
+      font-weight: 900;
+    }
+
+    .detail-head p {
+      margin: 0;
+      max-width: 760px;
+      color: rgba(242, 251, 252, 0.72);
+      font-size: 24px;
+      line-height: 1.55;
+      font-weight: 600;
+    }
+
+    .favorite-button {
+      width: 64px;
+      height: 64px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      border: 2px solid rgba(242, 251, 252, 0.36);
+      background: rgba(255, 255, 255, 0.06);
+      color: #ffe36e;
+    }
+
+    .favorite-button svg {
+      width: 38px;
+      height: 38px;
+      fill: currentColor;
+      stroke: currentColor;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 260px 220px 220px;
+      gap: 22px;
+    }
+
+    .action {
+      height: 78px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(218, 241, 244, 0.2);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
+      color: var(--text);
+      font-size: 25px;
+      font-weight: 900;
+    }
+
+    .action.focused {
+      color: #031112;
+      border: 3px solid rgba(53, 241, 221, 0.98);
+      background: linear-gradient(135deg, var(--cyan), #60ffe8);
+      box-shadow: 0 0 30px rgba(53, 241, 221, 0.52);
+    }
+
+    .detail-panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      align-content: start;
+    }
+
+    .info-panel {
+      min-height: 300px;
+      border-radius: 16px;
+      border: 1px solid rgba(218, 241, 244, 0.22);
+      background: linear-gradient(180deg, rgba(15, 30, 36, 0.92), rgba(8, 17, 21, 0.92));
+      padding: 28px;
+      box-shadow: 0 20px 42px rgba(0, 0, 0, 0.25);
+    }
+
+    .info-panel h3 {
+      margin: 0 0 22px;
+      font-size: 27px;
+      line-height: 1;
+      font-weight: 900;
+    }
+
+    .meta-list {
+      display: grid;
+      gap: 18px;
+    }
+
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(218, 241, 244, 0.12);
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .meta:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .meta span:first-child {
+      color: var(--muted);
+    }
+
+    .slot {
+      height: 58px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      border-top: 1px solid rgba(218, 241, 244, 0.12);
+      font-size: 21px;
+      font-weight: 800;
+    }
+
+    .slot:first-of-type {
+      border-top: 0;
+    }
+
+    .settings-section {
+      border-radius: 16px;
+      border: 1px solid rgba(218, 241, 244, 0.22);
+      background: linear-gradient(180deg, rgba(15, 30, 36, 0.92), rgba(8, 17, 21, 0.92));
+      padding: 28px;
+      box-shadow: 0 20px 42px rgba(0, 0, 0, 0.25);
+    }
+
+    .settings-section h3 {
+      margin: 0 0 24px;
+      font-size: 28px;
+      line-height: 1;
+      font-weight: 900;
+    }
+
+    .setting-row {
+      height: 76px;
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      align-items: center;
+      border-top: 1px solid rgba(218, 241, 244, 0.12);
+      font-size: 23px;
+      font-weight: 800;
+    }
+
+    .setting-row.focused {
+      margin-inline: -12px;
+      padding-inline: 12px;
+      border-radius: 12px;
+      border-top-color: transparent;
+      outline: 2px solid var(--cyan);
+      background: rgba(53, 241, 221, 0.11);
+      box-shadow: 0 0 22px rgba(53, 241, 221, 0.22);
+    }
+
+    .control {
+      justify-self: end;
+      color: var(--text);
+    }
+
+    .seg {
+      display: inline-grid;
+      grid-auto-flow: column;
+      gap: 6px;
+      padding: 6px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .seg span {
+      min-width: 78px;
+      text-align: center;
+      padding: 10px 14px;
+      border-radius: 9px;
+      color: var(--muted);
+    }
+
+    .seg .on {
+      color: #031112;
+      background: var(--cyan);
+    }
+
+    .toggle {
+      width: 78px;
+      height: 38px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      position: relative;
+    }
+
+    .toggle.on {
+      background: rgba(53, 241, 221, 0.88);
+    }
+
+    .toggle::after {
+      content: "";
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    }
+
+    .toggle.on::after {
+      left: 45px;
+    }
+
+    .slider {
+      width: 210px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      position: relative;
+    }
+
+    .slider::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: var(--value, 60%);
+      border-radius: inherit;
+      background: var(--cyan);
+      box-shadow: 0 0 16px rgba(53, 241, 221, 0.5);
+    }
+
+    .slider::after {
+      content: "";
+      position: absolute;
+      left: calc(var(--value, 60%) - 10px);
+      top: -8px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="screen">
+    <aside class="sidebar">
+      <div class="console">
+      </div>
+      <div class="brand">
+        <h1>游戏大厅</h1>
+        <p>FC / NES 经典游戏</p>
+      </div>
+      <nav class="nav" id="nav"></nav>
+    </aside>
+    <main class="main" id="main"></main>
+  </div>
+
+  <script>
+    const icons = {
+      library: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+      search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>',
+      recent: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.4 2.2"/></svg>',
+      star: '<svg viewBox="0 0 24 24"><path d="m12 2.8 2.8 5.8 6.4.9-4.6 4.5 1.1 6.4L12 17.4l-5.7 3 1.1-6.4-4.6-4.5 6.4-.9L12 2.8z"/></svg>',
+      gear: '<svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/><path d="M19.4 15a8.1 8.1 0 0 0 .1-1l2-1.5-2-3.5-2.4 1a7.2 7.2 0 0 0-1.7-1l-.3-2.6h-4l-.3 2.6c-.6.2-1.2.6-1.7 1l-2.4-1-2 3.5 2 1.5a8.1 8.1 0 0 0 .1 2l-2 1.5 2 3.5 2.4-1c.5.4 1.1.8 1.7 1l.3 2.6h4l.3-2.6c.6-.2 1.2-.6 1.7-1l2.4 1 2-3.5-2.1-1.5z"/></svg>'
+    };
+
+    const pages = [
+      ["library", "游戏库", icons.library],
+      ["search", "搜索", icons.search],
+      ["recent", "最近", icons.recent],
+      ["favorites", "收藏", icons.star],
+      ["settings", "设置", icons.gear]
+    ];
+
+    const games = [
+      ["星河战机", "#122f66", "#ff7c45"],
+      ["方块迷城", "#123a3a", "#2ad6bc"],
+      ["勇者小队", "#513064", "#f6b35a"],
+      ["忍者快跑", "#071c3b", "#5a8ee6"],
+      ["炸弹小子", "#125069", "#f9c443"],
+      ["海岛冒险", "#0b6b83", "#7bd66f"],
+      ["雪山竞速", "#214d76", "#e9f2ff"],
+      ["魔塔传说", "#412269", "#f0757c"],
+      ["像素足球", "#145a37", "#e8f46b"],
+      ["深海潜艇", "#052e4d", "#28d7ff"],
+      ["丛林探险", "#225521", "#f0b254"],
+      ["机械迷宫", "#293746", "#8ae6ff"]
+    ];
+
+    const route = new URLSearchParams(location.search).get("page") || "library";
+
+    document.getElementById("nav").innerHTML = pages.map(([key, label, icon]) => `
+      <div class="nav-item ${route === key ? "active" : ""}">
+        ${icon}
+        <span>${label}</span>
+      </div>
+    `).join("");
+
+    function star(filled = false) {
+      return `<svg class="star ${filled ? "filled" : ""}" viewBox="0 0 24 24"><path d="m12 2.8 2.8 5.8 6.4.9-4.6 4.5 1.1 6.4L12 17.4l-5.7 3 1.1-6.4-4.6-4.5 6.4-.9L12 2.8z" fill="${filled ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/></svg>`;
+    }
+
+    function card(game, index, focused = false, favorite = false) {
+      return `
+        <div class="card ${focused ? "focused" : ""}">
+          <div class="cover" style="--c1:${game[1]};--c2:${game[2]}"></div>
+          ${star(favorite)}
+          <div class="card-title">${game[0]}</div>
+        </div>
+      `;
+    }
+
+    function title(text, sub = "") {
+      return `<div class="page-title"><h2>${text}</h2>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+    }
+
+    const main = document.getElementById("main");
+
+    if (route === "library") {
+      main.innerHTML = title("游戏库", "12 款游戏") + `<div class="grid cols-4">${games.map((g, i) => card(g, i, i === 1, [2, 5, 8].includes(i))).join("")}</div>`;
+    }
+
+    if (route === "search") {
+      main.innerHTML = `
+        ${title("搜索", "8 个结果")}
+        <div class="search-box">${icons.search}<span>搜索游戏</span></div>
+        <div class="grid cols-4">${games.slice(0, 8).map((g, i) => card(g, i, false, [2, 5].includes(i))).join("")}</div>
+      `;
+    }
+
+    if (route === "recent") {
+      const recents = [games[1], games[0], games[4], games[5], games[3], games[6], games[9], games[11]];
+      main.innerHTML = `
+        ${title("最近", "最近打开的游戏")}
+        <div class="grid cols-4">${recents.map((g, i) => card(g, i, i === 0, [0, 3].includes(i))).join("")}</div>
+      `;
+    }
+
+    if (route === "favorites") {
+      const favs = [games[1], games[2], games[5], games[7], games[8], games[10], games[11], games[0]];
+      main.innerHTML = title("收藏", "8 款星标游戏") + `<div class="grid cols-4">${favs.map((g, i) => card(g, i, i === 0, true)).join("")}</div>`;
+    }
+
+    if (route === "settings") {
+      main.innerHTML = `
+        ${title("设置", "基础体验")}
+        <div class="settings">
+          <section class="settings-section">
+            <h3>画面</h3>
+            <div class="setting-row focused"><span>画面比例</span><div class="control"><div class="seg"><span>原始</span><span class="on">4:3</span><span>铺满</span></div></div></div>
+            <div class="setting-row"><span>滤镜</span><div class="control"><div class="seg"><span class="on">像素</span><span>平滑</span></div></div></div>
+            <div class="setting-row"><span>虚拟按键</span><div class="control"><div class="toggle on"></div></div></div>
+            <div class="setting-row"><span>按键透明度</span><div class="control"><div class="slider" style="--value:58%"></div></div></div>
+            <div class="setting-row"><span>按键大小</span><div class="control"><div class="slider" style="--value:64%"></div></div></div>
+          </section>
+          <section class="settings-section">
+            <h3>声音与存档</h3>
+            <div class="setting-row"><span>声音</span><div class="control"><div class="toggle on"></div></div></div>
+            <div class="setting-row"><span>音量</span><div class="control"><div class="slider" style="--value:72%"></div></div></div>
+            <div class="setting-row"><span>自动存档</span><div class="control"><div class="toggle on"></div></div></div>
+            <div class="setting-row"><span>手柄连接</span><div class="control"><div class="seg"><span class="on">隐藏虚拟键</span><span>保留</span></div></div></div>
+            <div class="setting-row"><span>清理缓存</span><div class="control">可执行</div></div>
+          </section>
+        </div>
+      `;
+    }
+
+    if (route === "detail") {
+      const game = games[1];
+      main.innerHTML = `
+        ${title("游戏详情", "方块迷城")}
+        <div class="detail">
+          <div class="detail-top">
+            <div class="detail-cover">
+              <div class="cover" style="--c1:${game[1]};--c2:${game[2]}"></div>
+            </div>
+            <section class="detail-info">
+              <div class="detail-head">
+                <div>
+                  <h2>${game[0]}</h2>
+                  <p>探索机关与隐藏房间，解开迷宫深处的钥匙谜题。适合横屏大屏浏览，支持手柄、遥控器和触摸操作。</p>
+                </div>
+                <div class="favorite-button">${icons.star}</div>
+              </div>
+              <div class="actions">
+                <div class="action focused">开始游戏</div>
+                <div class="action">读取存档</div>
+                <div class="action">更多</div>
+              </div>
+            </section>
+          </div>
+          <div class="detail-panels">
+            <div class="info-panel">
+              <h3>游戏信息</h3>
+              <div class="meta-list">
+                <div class="meta"><span>平台</span><strong>FC / NES</strong></div>
+                <div class="meta"><span>最近</span><strong>今天</strong></div>
+                <div class="meta"><span>游玩时长</span><strong>1 小时 24 分</strong></div>
+                <div class="meta"><span>收藏</span><strong>已星标</strong></div>
+              </div>
+            </div>
+            <div class="info-panel">
+              <h3>存档</h3>
+              <div class="slot"><span>自动存档</span><strong>可读取</strong></div>
+              <div class="slot"><span>手动槽 1</span><strong>可读取</strong></div>
+              <div class="slot"><span>手动槽 2</span><strong>空</strong></div>
+              <div class="slot"><span>手动槽 3</span><strong>空</strong></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>

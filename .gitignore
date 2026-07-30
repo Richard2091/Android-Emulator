@@ -1,0 +1,23 @@
+.gradle/
+build/
+app/build/
+app/.cxx/
+local.properties
+*.iml
+.idea/
+.playwright-mcp/
+
+# Android private resources and outputs
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# ROMs, emulator cores, saves, and private assets must stay outside public source.
+*.nes
+*.srm
+*.state
+*.so
+retrohall_private/
+private-assets.json
+D:/data/AI/Private/Android-Emulator/
