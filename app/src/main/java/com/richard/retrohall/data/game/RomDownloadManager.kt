@@ -1,0 +1,66 @@
+package com.richard.retrohall.data.game
+
+import android.content.Context
+import com.richard.retrohall.domain.game.LocalGame
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+
+class RomDownloadManager(context: Context) {
+    private val filesRoot = context.applicationContext.filesDir
+
+    suspend fun prepare(game: LocalGame): LocalGame = withContext(Dispatchers.IO) {
+        if (!game.romPath.startsWith("http://") && !game.romPath.startsWith("https://")) {
+            return@withContext game
+        }
+
+        val target = File(File(filesRoot, "rom-cache/${game.id}"), fileNameFromUrl(game.romPath))
+        if (!target.exists() || target.length() == 0L) {
+            download(game.romPath, target)
+        }
+        game.copy(romPath = target.absolutePath)
+    }
+
+    private fun download(sourceUrl: String, target: File) {
+        val connection = (URL(sourceUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 10_000
+            readTimeout = 60_000
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "RetroHall")
+        }
+        connection.use {
+            val code = responseCode
+            if (code !in 200..299) {
+                throw IllegalStateException("ROM 下载失败：HTTP $code")
+            }
+            target.parentFile?.mkdirs()
+            val temp = File(target.parentFile, "${target.name}.download")
+            inputStream.use { input ->
+                temp.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            if (temp.length() == 0L) {
+                temp.delete()
+                throw IllegalStateException("ROM 下载结果为空")
+            }
+            if (target.exists()) target.delete()
+            temp.renameTo(target)
+        }
+    }
+
+    private fun fileNameFromUrl(sourceUrl: String): String {
+        val rawName = sourceUrl.substringAfterLast('/').substringBefore('?').ifBlank { "game.nes" }
+        return rawName.replace(Regex("""[\\/:*?"<>|]"""), "_")
+    }
+}
+
+private inline fun <T> HttpURLConnection.use(block: HttpURLConnection.() -> T): T {
+    return try {
+        block()
+    } finally {
+        disconnect()
+    }
+}

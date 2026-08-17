@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import com.richard.retrohall.RetroHallDependencies
 import com.richard.retrohall.data.assets.FakeGameCatalog
 import com.richard.retrohall.data.game.GameRepository
+import com.richard.retrohall.data.game.RomDownloadManager
 import com.richard.retrohall.data.assets.PrivateAssetInitializer
 import com.richard.retrohall.data.settings.UserSettingsStore
 import com.richard.retrohall.domain.game.LocalGame
@@ -67,6 +68,7 @@ fun RetroHallApp() {
 
     RetroHallAppContent(
         gameRepository = dependencies.gameRepository,
+        romDownloadManager = dependencies.romDownloadManager,
         privateAssetInitializer = dependencies.privateAssetInitializer,
         userSettingsStore = dependencies.userSettingsStore,
     )
@@ -75,11 +77,13 @@ fun RetroHallApp() {
 @Composable
 private fun RetroHallAppContent(
     gameRepository: GameRepository,
+    romDownloadManager: RomDownloadManager,
     privateAssetInitializer: PrivateAssetInitializer?,
     userSettingsStore: UserSettingsStore,
 ) {
     val scope = rememberCoroutineScope()
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Hall) }
+    var launchMessage by remember { mutableStateOf<String?>(null) }
     val games by gameRepository.games.collectAsState(initial = emptyList())
     val settings by userSettingsStore.settings.collectAsState(initial = UserSettings())
 
@@ -103,17 +107,27 @@ private fun RetroHallAppContent(
 
                 is AppRoute.Detail -> DetailScreen(
                     game = current.game,
+                    message = launchMessage,
                     onBack = { route = AppRoute.Hall },
                     onToggleFavorite = {
                         scope.launch { gameRepository.toggleFavorite(current.game) }
                     },
                     onStart = {
-                        val startedAt = System.currentTimeMillis()
-                        val session = FakeEmulatorSession()
-                        session.load(current.game)
-                        session.start()
-                        scope.launch { gameRepository.markPlayed(current.game.id, startedAt) }
-                        route = AppRoute.Game(current.game, session, startedAt)
+                        launchMessage = "正在准备游戏..."
+                        scope.launch {
+                            val playableGame = runCatching { romDownloadManager.prepare(current.game) }
+                                .getOrElse { error ->
+                                    launchMessage = "准备游戏失败：${error.message ?: "未知错误"}"
+                                    return@launch
+                                }
+                            val startedAt = System.currentTimeMillis()
+                            val session = FakeEmulatorSession()
+                            session.load(playableGame)
+                            session.start()
+                            launchMessage = null
+                            gameRepository.markPlayed(playableGame.id, startedAt)
+                            route = AppRoute.Game(playableGame, session, startedAt)
+                        }
                     },
                 )
 
@@ -275,6 +289,7 @@ private fun GameTile(game: LocalGame, onClick: () -> Unit, onToggleFavorite: () 
 @Composable
 private fun DetailScreen(
     game: LocalGame,
+    message: String?,
     onBack: () -> Unit,
     onToggleFavorite: () -> Unit,
     onStart: () -> Unit,
@@ -298,6 +313,9 @@ private fun DetailScreen(
                     Text("收藏：${if (game.favorite) "是" else "否"}", color = Color(0xFFCBD5E1), fontSize = 18.sp)
                     Text("最近游玩：${game.lastPlayedAt?.toString() ?: "暂无"}", color = Color(0xFFCBD5E1), fontSize = 18.sp)
                     Text("累计游玩：${game.totalPlayTimeMillis / 60000} 分钟", color = Color(0xFFCBD5E1), fontSize = 18.sp)
+                    if (message != null) {
+                        Text(message, color = Color(0xFFBAE6FD), fontSize = 16.sp)
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Button(onClick = onStart) { Text("开始游戏") }
                         OutlinedButton(onClick = onToggleFavorite) { Text(if (game.favorite) "取消收藏" else "收藏") }

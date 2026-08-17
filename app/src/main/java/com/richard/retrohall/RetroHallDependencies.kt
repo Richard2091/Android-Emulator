@@ -6,6 +6,7 @@ import com.richard.retrohall.data.db.RetroHallDatabase
 import com.richard.retrohall.data.assets.PrivateAssetInitializer
 import com.richard.retrohall.data.game.GitHubGameCatalogClient
 import com.richard.retrohall.data.game.GameRepository
+import com.richard.retrohall.data.game.RomDownloadManager
 import com.richard.retrohall.data.settings.UserSettingsStore
 
 /**
@@ -21,6 +22,7 @@ class RetroHallDependencies private constructor(context: Context) {
     ).build()
 
     val gameRepository: GameRepository = GameRepository(database.localGameDao(), GitHubGameCatalogClient())
+    val romDownloadManager: RomDownloadManager = RomDownloadManager(appContext)
     val userSettingsStore: UserSettingsStore = UserSettingsStore(appContext)
     val privateAssetInitializer: PrivateAssetInitializer = PrivateAssetInitializer(appContext, database.localGameDao())
 
