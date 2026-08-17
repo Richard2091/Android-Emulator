@@ -607,7 +607,6 @@
 
     const pages = [
       ["library", "游戏库", icons.library],
-      ["search", "搜索", icons.search],
       ["recent", "最近", icons.recent],
       ["favorites", "收藏", icons.star],
       ["settings", "设置", icons.gear]
@@ -658,14 +657,10 @@
     const main = document.getElementById("main");
 
     if (route === "library") {
-      main.innerHTML = title("游戏库", "12 款游戏") + `<div class="grid cols-4">${games.map((g, i) => card(g, i, i === 1, [2, 5, 8].includes(i))).join("")}</div>`;
-    }
-
-    if (route === "search") {
       main.innerHTML = `
-        ${title("搜索", "8 个结果")}
+        ${title("游戏库", "12 款游戏")}
         <div class="search-box">${icons.search}<span>搜索游戏</span></div>
-        <div class="grid cols-4">${games.slice(0, 8).map((g, i) => card(g, i, false, [2, 5].includes(i))).join("")}</div>
+        <div class="grid cols-4">${games.map((g, i) => card(g, i, i === 1, [2, 5, 8].includes(i))).join("")}</div>
       `;
     }
 
