@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -85,6 +86,7 @@ private fun RetroHallAppContent(
     LaunchedEffect(gameRepository) {
         privateAssetInitializer?.initialize()
         gameRepository.seedIfEmpty()
+        runCatching { gameRepository.syncRemoteCatalog() }
     }
 
     MaterialTheme {
@@ -197,9 +199,13 @@ private fun HallScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(onClick = { query = if (query.isBlank()) "star" else "" }) {
-                        Text(if (query.isBlank()) "搜索" else "清除搜索")
-                    }
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        singleLine = true,
+                        label = { Text("搜索游戏") },
+                        modifier = Modifier.weight(1f).padding(end = 12.dp),
+                    )
                     OutlinedButton(onClick = onOpenSettings) {
                         Text("设置")
                     }

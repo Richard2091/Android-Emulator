@@ -12,7 +12,10 @@ import kotlinx.coroutines.flow.map
  *
  * @param localGameDao 本地游戏 DAO。
  */
-class GameRepository(private val localGameDao: LocalGameDao) {
+class GameRepository(
+    private val localGameDao: LocalGameDao,
+    private val remoteClient: RemoteGameCatalogClient? = null,
+) {
     val games: Flow<List<LocalGame>> = localGameDao.observeAll().map { entities ->
         entities.map { it.toDomain() }
     }
@@ -38,6 +41,31 @@ class GameRepository(private val localGameDao: LocalGameDao) {
         // 写入公开仓库允许保留的假数据，供无私有资源时开发和演示。
         localGameDao.upsertAll(FakeGameCatalog.games.map { it.toEntity() })
         return FakeGameCatalog.games.size
+    }
+
+    /**
+     * 从远程游戏库同步游戏索引。
+     *
+     * @return 本次同步写入的游戏数量。
+     */
+    suspend fun syncRemoteCatalog(): Int {
+        val client = remoteClient ?: return 0
+        val fetchedGames = client.fetchGames()
+        val existingById = localGameDao.getAll().associateBy { it.id }
+        val remoteGames = fetchedGames.map { game ->
+            val existing = existingById[game.id]
+            if (existing == null) {
+                game
+            } else {
+                game.copy(
+                    favorite = existing.favorite,
+                    lastPlayedAt = existing.lastPlayedAt,
+                    totalPlayTimeMillis = existing.totalPlayTimeMillis,
+                )
+            }
+        }
+        localGameDao.upsertAll(remoteGames.map { it.toEntity() })
+        return remoteGames.size
     }
 
     /**
