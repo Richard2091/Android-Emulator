@@ -50,14 +50,20 @@ import com.richard.retrohall.data.settings.UserSettingsStore
 import com.richard.retrohall.domain.game.LocalGame
 import com.richard.retrohall.domain.settings.AspectRatio
 import com.richard.retrohall.domain.settings.UserSettings
+import com.richard.retrohall.emulator.EmulatorSession
+import com.richard.retrohall.emulator.EmulatorSessionFactory
 import com.richard.retrohall.emulator.EmulatorState
-import com.richard.retrohall.emulator.FakeEmulatorSession
 import kotlinx.coroutines.launch
 
 private sealed interface AppRoute {
     data object Hall : AppRoute
     data class Detail(val game: LocalGame) : AppRoute
-    data class Game(val game: LocalGame, val session: FakeEmulatorSession, val startedAt: Long) : AppRoute
+    data class Game(
+        val game: LocalGame,
+        val session: EmulatorSession,
+        val startedAt: Long,
+        val launchNotice: String?,
+    ) : AppRoute
     data object Settings : AppRoute
 }
 
@@ -69,6 +75,7 @@ fun RetroHallApp() {
     RetroHallAppContent(
         gameRepository = dependencies.gameRepository,
         romDownloadManager = dependencies.romDownloadManager,
+        emulatorSessionFactory = dependencies.emulatorSessionFactory,
         privateAssetInitializer = dependencies.privateAssetInitializer,
         userSettingsStore = dependencies.userSettingsStore,
     )
@@ -78,6 +85,7 @@ fun RetroHallApp() {
 private fun RetroHallAppContent(
     gameRepository: GameRepository,
     romDownloadManager: RomDownloadManager,
+    emulatorSessionFactory: EmulatorSessionFactory,
     privateAssetInitializer: PrivateAssetInitializer?,
     userSettingsStore: UserSettingsStore,
 ) {
@@ -121,12 +129,10 @@ private fun RetroHallAppContent(
                                     return@launch
                                 }
                             val startedAt = System.currentTimeMillis()
-                            val session = FakeEmulatorSession()
-                            session.load(playableGame)
-                            session.start()
-                            launchMessage = null
+                            val launch = emulatorSessionFactory.createStartedSession(playableGame)
+                            launchMessage = launch.message
                             gameRepository.markPlayed(playableGame.id, startedAt)
-                            route = AppRoute.Game(playableGame, session, startedAt)
+                            route = AppRoute.Game(playableGame, launch.session, startedAt, launch.message)
                         }
                     },
                 )
@@ -135,6 +141,7 @@ private fun RetroHallAppContent(
                     game = current.game,
                     session = current.session,
                     settings = settings,
+                    launchNotice = current.launchNotice,
                     onExit = {
                         current.session.saveSram()
                         current.session.stop()
@@ -331,13 +338,14 @@ private fun DetailScreen(
 @Composable
 private fun GameScreen(
     game: LocalGame,
-    session: FakeEmulatorSession,
+    session: EmulatorSession,
     settings: UserSettings,
+    launchNotice: String?,
     onExit: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     var pauseVisible by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf("模拟器流程已打通，真实 libretro 将在后续阶段接入。") }
+    var message by remember(launchNotice) { mutableStateOf(launchNotice ?: "游戏运行中") }
 
     AppBackground {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
@@ -351,7 +359,7 @@ private fun GameScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(game.title, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                    Text("FakeEmulatorSession: ${session.state}", color = Color(0xFFBAE6FD), fontSize = 18.sp)
+                    Text("模拟器状态：${session.state}", color = Color(0xFFBAE6FD), fontSize = 18.sp)
                     Text("画面比例：${settings.aspectRatio}", color = Color(0xFFCBD5E1), fontSize = 16.sp)
                     Text("虚拟按键：${if (settings.virtualPadVisible) "显示" else "隐藏"}", color = Color(0xFFCBD5E1), fontSize = 16.sp)
                     Text(message, color = Color(0xFFCBD5E1), fontSize = 16.sp)

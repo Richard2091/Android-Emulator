@@ -8,6 +8,7 @@ import com.richard.retrohall.data.game.GitHubGameCatalogClient
 import com.richard.retrohall.data.game.GameRepository
 import com.richard.retrohall.data.game.RomDownloadManager
 import com.richard.retrohall.data.settings.UserSettingsStore
+import com.richard.retrohall.emulator.EmulatorSessionFactory
 
 /**
  * 提供应用级依赖，避免在第一版引入额外依赖注入框架。
@@ -23,6 +24,7 @@ class RetroHallDependencies private constructor(context: Context) {
 
     val gameRepository: GameRepository = GameRepository(database.localGameDao(), GitHubGameCatalogClient())
     val romDownloadManager: RomDownloadManager = RomDownloadManager(appContext)
+    val emulatorSessionFactory: EmulatorSessionFactory = EmulatorSessionFactory(appContext)
     val userSettingsStore: UserSettingsStore = UserSettingsStore(appContext)
     val privateAssetInitializer: PrivateAssetInitializer = PrivateAssetInitializer(appContext, database.localGameDao())
 

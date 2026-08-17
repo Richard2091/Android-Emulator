@@ -12,5 +12,6 @@ find_library(log-lib log)
 
 target_link_libraries(
     retrohall_libretro_host
+    dl
     ${log-lib}
 )
