@@ -29,14 +29,6 @@
 .\gradlew.bat assembleDebug
 ```
 
-## 私有资源约定
-
-本仓库不包含 ROM、BIOS、模拟器核心二进制、存档、密钥或其他私有资源。
-
-- 使用 `private-assets.example.json` 了解可选的私有资源清单格式。
-- 私有资源文件应通过 `retrohall.privateAssetsDir` 指向仓库外目录。
-- 请仅使用你有权使用的游戏文件与模拟器核心。
-
 ## 当前边界
 
 界面和业务流程目前通过 `FakeEmulatorSession` 验证；`LibretroHost` 已提供原生接口定义，但尚未完成真实核心加载、音视频渲染和输入循环集成。
