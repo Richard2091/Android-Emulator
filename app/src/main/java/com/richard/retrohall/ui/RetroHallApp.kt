@@ -106,7 +106,10 @@ private fun RetroHallAppContent(
             when (val current = route) {
                 AppRoute.Hall -> HallScreen(
                     games = games,
-                    onOpenGame = { route = AppRoute.Detail(it) },
+                    onOpenGame = {
+                        launchMessage = null
+                        route = AppRoute.Detail(it)
+                    },
                     onOpenSettings = { route = AppRoute.Settings },
                     onToggleFavorite = { game ->
                         scope.launch { gameRepository.toggleFavorite(game) }

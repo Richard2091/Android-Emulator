@@ -184,7 +184,7 @@ bool environment_callback(unsigned cmd, void *data) {
             return true;
         case RETRO_ENVIRONMENT_GET_VARIABLE:
             static_cast<retro_variable *>(data)->value = nullptr;
-            return true;
+            return false;
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
             *static_cast<bool *>(data) = false;
             return true;
