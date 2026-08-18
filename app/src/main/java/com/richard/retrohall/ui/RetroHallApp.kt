@@ -1,11 +1,13 @@
 package com.richard.retrohall.ui
 
 import android.graphics.BitmapFactory
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,7 +15,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -28,12 +33,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -55,10 +63,12 @@ import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -84,15 +94,18 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.painter.Painter
@@ -112,6 +125,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -134,6 +148,7 @@ import com.richard.retrohall.data.db.SaveStateEntity
 import com.richard.retrohall.data.save.SaveStateRepository
 import com.richard.retrohall.data.settings.UserSettingsStore
 import com.richard.retrohall.domain.game.LocalGame
+import com.richard.retrohall.domain.input.GameAction
 import com.richard.retrohall.domain.settings.AspectRatio
 import com.richard.retrohall.domain.settings.ControlMode
 import com.richard.retrohall.domain.settings.UserSettings
@@ -147,7 +162,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.PI
+import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -229,6 +246,8 @@ private fun RetroHallAppContent(
             when (val current = route) {
                 AppRoute.Hall -> HallScreen(
                     games = games,
+                    romDownloadManager = romDownloadManager,
+                    downloadVersion = downloadVersion,
                     selectedSection = selectedHallSection,
                     libraryGridState = libraryGridState,
                     recentGridState = recentGridState,
@@ -578,6 +597,8 @@ private enum class GameSort(val label: String) {
 @Composable
 private fun HallScreen(
     games: List<LocalGame>,
+    romDownloadManager: RomDownloadManager,
+    downloadVersion: Int,
     selectedSection: String,
     libraryGridState: LazyGridState,
     recentGridState: LazyGridState,
@@ -594,12 +615,16 @@ private fun HallScreen(
     var focusSearchOnReveal by remember { mutableStateOf(false) }
     var selectedPlatform by rememberSaveable { mutableStateOf("FC") }
     var selectedSort by rememberSaveable { mutableStateOf(GameSort.Hotness) }
+    var selectedDownloadStatus by rememberSaveable { mutableStateOf("全部") }
+    val downloadStatusOptions = listOf("全部", "已下载", "未下载")
     var toolbarInteractionTick by remember { mutableStateOf(0L) }
     val searchFocusRequester = remember { FocusRequester() }
     val pageFocusRequester = remember { FocusRequester() }
     val density = LocalDensity.current
     val searchPullThreshold = with(density) { 52.dp.toPx() }
     val gridTopPadding = 28.dp
+    val toolbarHeight = 56.dp
+    val toolbarGap = 12.dp
     val platformOptions = remember(games) {
         val all = games
             .mapNotNull { it.platform }
@@ -610,6 +635,9 @@ private fun HallScreen(
         listOf("全部", "FC") + all.filter { it != "FC" && it != "全部" }
     }
 
+    val downloadedIds = remember(romDownloadManager, games, downloadVersion) {
+        games.filter { romDownloadManager.isDownloaded(it.id) }.map { it.id }.toSet()
+    }
     val filtered = games.filter { game ->
         val sectionMatches = when (selectedSection) {
             "收藏" -> game.favorite
@@ -619,11 +647,16 @@ private fun HallScreen(
         val platformMatches = selectedPlatform == "全部" ||
             game.platform.contains(selectedPlatform, ignoreCase = true) ||
             (selectedPlatform == "FC" && game.platform.contains("NES", ignoreCase = true))
+        val statusMatches = when (selectedDownloadStatus) {
+            "已下载" -> game.id in downloadedIds
+            "未下载" -> game.id !in downloadedIds
+            else -> true
+        }
         val queryMatches = query.isBlank() ||
             game.title.contains(query, ignoreCase = true) ||
             game.category.contains(query, ignoreCase = true) ||
             game.platform.contains(query, ignoreCase = true)
-        sectionMatches && platformMatches && queryMatches
+        sectionMatches && platformMatches && statusMatches && queryMatches
     }
     val gamesShown = when (selectedSort) {
         GameSort.Hotness -> filtered.sortedWith(compareByDescending<LocalGame> { it.hotness ?: Double.NEGATIVE_INFINITY })
@@ -691,6 +724,11 @@ private fun HallScreen(
                 },
         ) {
             Box(modifier = Modifier.weight(1f)) {
+                val toolbarProgress by animateFloatAsState(
+                    targetValue = if (showSearch) 1f else 0f,
+                    animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+                    label = "toolbarProgress",
+                )
                 if (filtered.isEmpty()) {
                     EmptyPanelFrame(
                         text = if (query.isBlank()) "没有游戏" else "没有匹配的游戏",
@@ -712,6 +750,11 @@ private fun HallScreen(
                                         focusSearchOnReveal = false
                                         if (!searchVisible) searchVisible = true
                                         toolbarInteractionTick++
+                                    }
+                                    val atTop = gridState.firstVisibleItemIndex == 0 &&
+                                        gridState.firstVisibleItemScrollOffset <= 0
+                                    if (atTop) {
+                                        return Offset(0f, available.y)
                                     }
                                 } else if (available.y < 0f) {
                                     pullDistance = 0f
@@ -742,7 +785,10 @@ private fun HallScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .nestedScroll(searchRevealScroll),
-                            contentPadding = PaddingValues(top = gridTopPadding, bottom = 28.dp),
+                            contentPadding = PaddingValues(
+                                top = gridTopPadding + (toolbarHeight + toolbarGap) * toolbarProgress,
+                                bottom = 28.dp,
+                            ),
                             horizontalArrangement = Arrangement.spacedBy(gap),
                             verticalArrangement = Arrangement.spacedBy(gap),
                         ) {
@@ -760,30 +806,32 @@ private fun HallScreen(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .offset(y = gridTopPadding)
+                        .offset(y = gridTopPadding - toolbarHeight * (1f - toolbarProgress))
+                        .alpha(toolbarProgress)
                         .zIndex(2f),
                 ) {
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = showSearch,
-                        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-                        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
-                    ) {
-                        HallFilterBar(
-                            query = query,
-                            onQueryChange = {
-                                query = it
-                                toolbarInteractionTick++
-                            },
-                            selectedPlatform = selectedPlatform,
-                            platformOptions = platformOptions,
-                            onSelectPlatform = { selectedPlatform = it },
-                            selectedSort = selectedSort,
-                            sortOptions = GameSort.entries,
-                            onSelectSort = { selectedSort = it },
-                            focusRequester = searchFocusRequester,
-                            onInteraction = { toolbarInteractionTick++ },
-                        )
-                    }
+                    HallFilterBar(
+                        query = query,
+                        onQueryChange = {
+                            query = it
+                            toolbarInteractionTick++
+                        },
+                        selectedStatus = selectedDownloadStatus,
+                        statusOptions = downloadStatusOptions,
+                        onSelectStatus = {
+                            selectedDownloadStatus = it
+                            toolbarInteractionTick++
+                        },
+                        selectedPlatform = selectedPlatform,
+                        platformOptions = platformOptions,
+                        onSelectPlatform = { selectedPlatform = it },
+                        selectedSort = selectedSort,
+                        sortOptions = GameSort.entries,
+                        onSelectSort = { selectedSort = it },
+                        focusRequester = searchFocusRequester,
+                        onInteraction = { toolbarInteractionTick++ },
+                        toolbarVisible = showSearch,
+                    )
                 }
             }
         }
@@ -991,6 +1039,9 @@ private fun SidebarItem(icon: NavIcon, label: String, selected: Boolean, onClick
 private fun HallFilterBar(
     query: String,
     onQueryChange: (String) -> Unit,
+    selectedStatus: String,
+    statusOptions: List<String>,
+    onSelectStatus: (String) -> Unit,
     selectedPlatform: String,
     platformOptions: List<String>,
     onSelectPlatform: (String) -> Unit,
@@ -999,6 +1050,7 @@ private fun HallFilterBar(
     onSelectSort: (GameSort) -> Unit,
     focusRequester: FocusRequester,
     onInteraction: () -> Unit,
+    toolbarVisible: Boolean,
 ) {
     Row(
         modifier = Modifier
@@ -1031,6 +1083,17 @@ private fun HallFilterBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ToolbarSelect(
+                label = "状态",
+                value = selectedStatus,
+                options = statusOptions,
+                onSelect = {
+                    onSelectStatus(it)
+                    onInteraction()
+                },
+                onInteraction = onInteraction,
+                toolbarVisible = toolbarVisible,
+            )
+            ToolbarSelect(
                 label = "类型",
                 value = selectedPlatform,
                 options = platformOptions,
@@ -1039,6 +1102,7 @@ private fun HallFilterBar(
                     onInteraction()
                 },
                 onInteraction = onInteraction,
+                toolbarVisible = toolbarVisible,
             )
             ToolbarSelect(
                 label = "排序",
@@ -1051,6 +1115,7 @@ private fun HallFilterBar(
                     }
                 },
                 onInteraction = onInteraction,
+                toolbarVisible = toolbarVisible,
             )
         }
         ToolbarDivider()
@@ -1082,8 +1147,12 @@ private fun ToolbarSelect(
     options: List<String>,
     onSelect: (String) -> Unit,
     onInteraction: () -> Unit,
+    toolbarVisible: Boolean,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    LaunchedEffect(toolbarVisible) {
+        if (!toolbarVisible) expanded = false
+    }
     Box {
         Row(
             modifier = Modifier
@@ -1203,7 +1272,7 @@ private fun SearchBox(
 @Composable
 private fun GameTile(game: LocalGame, coverReloadTick: Long, onClick: () -> Unit, onToggleFavorite: () -> Unit) {
     val palette = remember(game.id) { gamePalette(game) }
-    val coverBitmap = rememberCoverBitmap(game, coverReloadTick).value
+    val coverState = rememberCoverBitmap(game, coverReloadTick).value
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -1246,13 +1315,15 @@ private fun GameTile(game: LocalGame, coverReloadTick: Long, onClick: () -> Unit
                 }
             },
     ) {
-        if (coverBitmap != null) {
-            Image(
-                bitmap = coverBitmap,
+        when (coverState) {
+            is CoverState.Loaded -> Image(
+                bitmap = coverState.bitmap,
                 contentDescription = game.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
+            is CoverState.Loading -> CoverLoadingIndicator(size = 40.dp)
+            is CoverState.Empty -> Unit
         }
         Box(
             modifier = Modifier
@@ -1629,7 +1700,7 @@ private fun formatTimestamp(timestamp: Long?): String {
 @Composable
 private fun CoverArt(game: LocalGame, focused: Boolean, coverReloadTick: Long, modifier: Modifier = Modifier) {
     val palette = remember(game.id) { gamePalette(game) }
-    val coverBitmap = rememberCoverBitmap(game, coverReloadTick).value
+    val coverState = rememberCoverBitmap(game, coverReloadTick).value
     Box(
         modifier = modifier
             .background(Color(0xFF15262B), RoundedCornerShape(14.dp))
@@ -1658,41 +1729,85 @@ private fun CoverArt(game: LocalGame, focused: Boolean, coverReloadTick: Long, m
                 }
             },
     ) {
-        if (coverBitmap != null) {
-            Image(
-                bitmap = coverBitmap,
+        when (coverState) {
+            is CoverState.Loaded -> Image(
+                bitmap = coverState.bitmap,
                 contentDescription = game.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
+            is CoverState.Loading -> CoverLoadingIndicator(size = 44.dp)
+            is CoverState.Empty -> Unit
         }
     }
 }
 
+/** 封面加载状态：下载中 / 已加载 / 确认无封面。 */
+private sealed interface CoverState {
+    data object Loading : CoverState
+    data class Loaded(val bitmap: ImageBitmap) : CoverState
+    data object Empty : CoverState
+}
+
 @Composable
-private fun rememberCoverBitmap(game: LocalGame, reloadTick: Long): State<ImageBitmap?> {
+private fun rememberCoverBitmap(game: LocalGame, reloadTick: Long): State<CoverState> {
     val context = LocalContext.current
     val downloader = remember { RetroHallDependencies.get(context).coverDownloader }
     val path = game.coverPath
-    return produceState<ImageBitmap?>(initialValue = null, path, reloadTick) {
-        value = if (path.isBlank()) {
-            null
-        } else if (!path.startsWith("http://", ignoreCase = true) && !path.startsWith("https://", ignoreCase = true)) {
-            runCatching {
-                val file = File(path)
-                if (file.exists()) BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap() else null
-            }.getOrNull()
+    return produceState<CoverState>(initialValue = CoverState.Loading, path, reloadTick) {
+        value = decodeCoverState(path, downloader, game.id)
+    }
+}
+
+/** 根据封面路径解码为加载状态。 */
+private suspend fun decodeCoverState(path: String, downloader: CoverDownloader, gameId: String): CoverState {
+    if (path.isBlank()) return CoverState.Empty
+    return if (!path.startsWith("http://", ignoreCase = true) && !path.startsWith("https://", ignoreCase = true)) {
+        val file = File(path)
+        if (file.exists()) {
+            val bitmap = runCatching { BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap() }.getOrNull()
+            bitmap?.let { CoverState.Loaded(it) } ?: CoverState.Empty
         } else {
-            val localPath = downloader.prepareCover(game.id, path)
-            if (localPath != path) {
-                runCatching {
-                    val file = File(localPath)
-                    if (file.exists()) BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap() else null
-                }.getOrNull()
-            } else {
-                null
-            }
+            CoverState.Empty
         }
+    } else {
+        val localPath = downloader.prepareCover(gameId, path)
+        if (localPath != path) {
+            val file = File(localPath)
+            if (file.exists()) {
+                val bitmap = runCatching { BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap() }.getOrNull()
+                bitmap?.let { CoverState.Loaded(it) } ?: CoverState.Empty
+            } else {
+                CoverState.Empty
+            }
+        } else {
+            // 远程封面下载失败且无本地缓存。
+            CoverState.Empty
+        }
+    }
+}
+@Composable
+private fun CoverLoadingIndicator(size: Dp) {
+    val transition = rememberInfiniteTransition(label = "coverLoading")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "coverAlpha",
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .wrapContentSize(Alignment.Center),
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(size),
+            color = UiCyan.copy(alpha = alpha),
+            strokeWidth = 3.dp,
+        )
     }
 }
 
@@ -1859,119 +1974,508 @@ private fun GameScreen(
 ) {
     var pauseVisible by remember { mutableStateOf(false) }
     var message by remember(launchNotice) { mutableStateOf(launchNotice ?: "游戏运行中") }
-    val virtualPadActive = settings.controlMode == ControlMode.VirtualPad && settings.virtualPadVisible
+    val showPad = settings.controlMode == ControlMode.VirtualPad && settings.virtualPadVisible
+    val padOpacity = settings.virtualPadOpacity.coerceIn(0.2f, 1f)
+    val padScale = minOf(settings.virtualPadScale.coerceIn(0.6f, 1.6f), 1.15f)
 
-    AppBackground {
-        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .border(2.dp, UiCyan, RoundedCornerShape(8.dp))
-                    .background(Color.Black, RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(game.title, color = UiText, fontSize = 40.sp, fontWeight = FontWeight.Black)
-                    Text("模拟器状态：${session.state}", color = UiCyan, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Text("画面比例：${aspectRatioLabel(settings.aspectRatio)}", color = Color(0xD9F2FBFC), fontSize = 20.sp)
-                    Text("操作模式：${controlModeLabel(settings.controlMode)}", color = Color(0xD9F2FBFC), fontSize = 20.sp)
-                    Text("虚拟按键：${if (virtualPadActive) "显示" else "隐藏"}", color = Color(0xD9F2FBFC), fontSize = 20.sp)
-                    Text(message, color = Color(0xD9F2FBFC), fontSize = 20.sp)
-                }
+    fun resumeGame() {
+        session.resume()
+        pauseVisible = false
+    }
 
-                if (virtualPadActive) {
-                    Text(
-                        text = "方向键    选择    开始    乙    甲",
-                        color = Color.White.copy(alpha = settings.virtualPadOpacity),
-                        fontSize = (16.sp.value * settings.virtualPadScale).sp,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
-                    )
-                } else if (settings.controlMode == ControlMode.Gamepad) {
-                    Text(
-                        text = "手柄模式",
-                        color = UiCyan.copy(alpha = 0.78f),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
-                    )
-                }
-
-                if (pauseVisible) {
-                    PauseMenu(
-                        onResume = {
-                            session.resume()
-                            pauseVisible = false
-                            message = "已继续游戏"
-                        },
-                        onSave = {
-                            message = if (session.saveState(com.richard.retrohall.domain.save.SaveSlot.Manual(1))) {
-                                "已保存到手动槽 1"
-                            } else {
-                                "保存失败"
-                            }
-                        },
-                        onLoad = {
-                            message = if (session.loadState(com.richard.retrohall.domain.save.SaveSlot.Manual(1))) {
-                                "已读取手动槽 1"
-                            } else {
-                                "读档失败"
-                            }
-                        },
-                        onReset = {
-                            session.reset()
-                            pauseVisible = false
-                            message = "游戏已重置"
-                        },
-                        onOpenSettings = onOpenSettings,
-                        onExit = onExit,
-                    )
-                }
-            }
+    AppBackground(contentPadding = PaddingValues(vertical = 6.dp, horizontal = 12.dp)) {
+        Box(modifier = Modifier.fillMaxSize()) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("菜单 暂停    返回 大厅", color = UiCyan, fontSize = 16.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = {
-                        session.pause()
-                        pauseVisible = true
-                    }, shape = RoundedCornerShape(8.dp)) { Text("暂停菜单") }
-                    OutlinedButton(onClick = onExit, shape = RoundedCornerShape(8.dp)) { Text("退出到大厅") }
+                if (showPad) {
+                    Column(
+                        modifier = Modifier
+                            .width(168.dp * padScale)
+                            .fillMaxHeight()
+                            .padding(vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(modifier = Modifier.offset(y = 46.dp)) {
+                            JoyStickPad(
+                                opacity = padOpacity,
+                                onDirs = { u, d, l, r ->
+                                    session.sendInput(GameAction.Up, u)
+                                    session.sendInput(GameAction.Down, d)
+                                    session.sendInput(GameAction.Left, l)
+                                    session.sendInput(GameAction.Right, r)
+                                },
+                                modifier = Modifier.size(156.dp * padScale),
+                            )
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            PillButton("设置", padOpacity, danger = false) {
+                                session.pause()
+                                pauseVisible = true
+                            }
+                            PillButton("退出", padOpacity, danger = true) { onExit() }
+                        }
+                    }
                 }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(horizontal = if (showPad) 10.dp else 0.dp)
+                        .background(Color.Black)
+                        .border(1.dp, UiLine, RoundedCornerShape(6.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    GameFrame(game.title, session.state, message)
+                    if (pauseVisible) {
+                        PauseWatermark()
+                    }
+                }
+
+                if (showPad) {
+                    Column(
+                        modifier = Modifier
+                            .width(158.dp * padScale)
+                            .fillMaxHeight()
+                            .padding(vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(modifier = Modifier.offset(y = 44.dp)) {
+                            AbxyPad(
+                                opacity = padOpacity,
+                                onAction = { a, p -> session.sendInput(a, p) },
+                                modifier = Modifier.size(150.dp * padScale),
+                            )
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            PillButton("选择", padOpacity, danger = false) {
+                                session.sendInput(GameAction.Select, true)
+                                session.sendInput(GameAction.Select, false)
+                            }
+                            PillButton("开始", padOpacity, danger = false) {
+                                session.sendInput(GameAction.Start, true)
+                                session.sendInput(GameAction.Start, false)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (pauseVisible) {
+        GameSettingsOverlay(
+            onContinue = { resumeGame(); message = "已继续游戏" },
+            onSave = {
+                message = if (session.saveState(com.richard.retrohall.domain.save.SaveSlot.Manual(1))) {
+                    "已保存到手动槽 1"
+                } else {
+                    "保存失败"
+                }
+            },
+            onLoad = {
+                message = if (session.loadState(com.richard.retrohall.domain.save.SaveSlot.Manual(1))) {
+                    "已读取手动槽 1"
+                } else {
+                    "读档失败"
+                }
+            },
+            onReset = {
+                session.reset()
+                resumeGame()
+                message = "游戏已重置"
+            },
+            onExit = onExit,
+            onDismiss = { resumeGame() },
+        )
+    }
+}
+
+@Composable
+private fun GameFrame(title: String, state: EmulatorState, message: String) {
+    Column(
+        modifier = Modifier.padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            title, color = UiText.copy(alpha = 0.92f), fontSize = 30.sp,
+            fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+        Text(stateLabel(state), color = UiCyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(message, color = UiText.copy(alpha = 0.55f), fontSize = 16.sp, textAlign = TextAlign.Center)
+    }
+}
+
+private fun stateLabel(state: EmulatorState): String = when (state) {
+    EmulatorState.Idle -> "空闲"
+    EmulatorState.Loaded -> "已载入"
+    EmulatorState.Running -> "运行中"
+    EmulatorState.Paused -> "已暂停"
+    EmulatorState.Stopped -> "已停止"
+    EmulatorState.Error -> "出错"
+}
+
+@Composable
+private fun PauseWatermark() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+            "已暂停",
+            color = Color(0x52F2FBFC),
+            fontSize = 52.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 12.sp,
+            modifier = Modifier.rotate(-8f),
+        )
+    }
+}
+
+@Composable
+private fun JoyStickPad(
+    onDirs: (up: Boolean, down: Boolean, left: Boolean, right: Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    opacity: Float = 0.7f,
+) {
+    var up by remember { mutableStateOf(false) }
+    var down by remember { mutableStateOf(false) }
+    var left by remember { mutableStateOf(false) }
+    var right by remember { mutableStateOf(false) }
+    var stickX by remember { mutableStateOf(0f) }
+    var stickY by remember { mutableStateOf(0f) }
+
+    fun setDirs(u: Boolean, d: Boolean, l: Boolean, r: Boolean) {
+        if (u != up) { up = u; onDirs(u, down, left, right) }
+        if (d != down) { down = d; onDirs(up, d, left, right) }
+        if (l != left) { left = l; onDirs(up, down, l, right) }
+        if (r != right) { right = r; onDirs(up, down, left, r) }
+    }
+
+    fun apply(px: Float, py: Float, sizePx: Float) {
+        val c = sizePx / 2f
+        var nx = px - c
+        var ny = py - c
+        val max = c - sizePx * 0.16f
+        val len = hypot(nx, ny)
+        if (len > max) {
+            nx = nx / len * max
+            ny = ny / len * max
+        }
+        stickX = nx
+        stickY = ny
+        val dirs = BooleanArray(4)
+        if (len >= 4f) {
+            val oct = Math.round(atan2(ny.toDouble(), nx.toDouble()) * 180.0 / PI / 45.0).toInt()
+            when (oct) {
+                0 -> dirs[3] = true
+                1 -> { dirs[3] = true; dirs[1] = true }
+                2 -> dirs[1] = true
+                3 -> { dirs[1] = true; dirs[2] = true }
+                4, -4 -> dirs[2] = true
+                -3 -> { dirs[2] = true; dirs[0] = true }
+                -2 -> dirs[0] = true
+                -1 -> { dirs[0] = true; dirs[3] = true }
+            }
+        }
+        setDirs(dirs[0], dirs[1], dirs[2], dirs[3])
+    }
+
+    Box(
+        modifier = modifier
+            .alpha(opacity)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    apply(down.position.x, down.position.y, size.width.toFloat())
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val p = event.changes.firstOrNull { it.pressed } ?: break
+                        apply(p.position.x, p.position.y, size.width.toFloat())
+                        if (event.changes.none { it.pressed }) break
+                        event.changes.forEach { if (!it.pressed) it.consume() }
+                    }
+                    stickX = 0f
+                    stickY = 0f
+                    setDirs(false, false, false, false)
+                }
+            },
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val c = size.minDimension / 2f
+            val center = Offset(c, c)
+            drawCircle(
+                brush = Brush.radialGradient(listOf(Color(0xFF22343B), Color(0xFF0B1215)), center = center, radius = c),
+                radius = c,
+                center = center,
+            )
+            drawCircle(color = UiLine, radius = c, center = center, style = Stroke(1.5f))
+            val zoneR = c * 0.94f
+            drawZone(up, center, zoneR, -135f, 90f)
+            drawZone(right, center, zoneR, -45f, 90f)
+            drawZone(down, center, zoneR, 45f, 90f)
+            drawZone(left, center, zoneR, 135f, 90f)
+            drawCircle(
+                color = UiCyan.copy(alpha = 0.16f),
+                radius = c * 0.63f,
+                center = center,
+                style = Stroke(1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f))),
+            )
+            val headR = c * 0.34f
+            val headCenter = center + Offset(stickX, stickY)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(Color(0xFF2E454D), Color(0xFF0F191D)),
+                    center = headCenter - Offset(headR * 0.4f, headR * 0.4f),
+                    radius = headR * 2f,
+                ),
+                radius = headR,
+                center = headCenter,
+            )
+            drawCircle(color = UiCyan, radius = headR, center = headCenter, style = Stroke(2f))
+        }
+    }
+}
+
+private fun DrawScope.drawZone(active: Boolean, center: Offset, radius: Float, startDeg: Float, sweep: Float) {
+    if (!active) return
+    val path = Path()
+    path.moveTo(center.x, center.y)
+    val rad = Math.toRadians(startDeg.toDouble())
+    path.lineTo(center.x + radius * cos(rad).toFloat(), center.y + radius * sin(rad).toFloat())
+    path.addArc(
+        Rect(center.x - radius, center.y - radius, center.x + radius, center.y + radius),
+        startDeg,
+        sweep,
+    )
+    path.close()
+    drawPath(
+        path,
+        Brush.radialGradient(
+            colorStops = arrayOf(
+                0f to UiCyan.copy(alpha = 0.55f),
+                0.78f to UiCyan.copy(alpha = 0.55f),
+                1f to UiCyan.copy(alpha = 0f),
+            ),
+            center = center,
+            radius = radius / 0.94f,
+        ),
+    )
+}
+
+@Composable
+private fun AbxyPad(
+    onAction: (GameAction, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    opacity: Float = 0.7f,
+) {
+    Box(modifier = modifier.alpha(opacity)) {
+        RoundKey(
+            label = "X", action = GameAction.NesA, color = UiBlue,
+            onAction = onAction,
+            modifier = Modifier.align(Alignment.TopCenter).size(56.dp),
+        )
+        RoundKey(
+            label = "Y", action = GameAction.NesB, color = Color(0xFFC8B6FF),
+            onAction = onAction,
+            modifier = Modifier.align(Alignment.CenterStart).size(56.dp),
+        )
+        RoundKey(
+            label = "B", action = GameAction.NesB, color = UiGold,
+            onAction = onAction,
+            modifier = Modifier.align(Alignment.CenterEnd).size(56.dp),
+        )
+        RoundKey(
+            label = "A", action = GameAction.NesA, color = UiCyan,
+            onAction = onAction,
+            modifier = Modifier.align(Alignment.BottomCenter).size(56.dp),
+        )
+    }
+}
+
+@Composable
+private fun RoundKey(
+    label: String,
+    action: GameAction,
+    color: Color,
+    onAction: (GameAction, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var pressed by remember { mutableStateOf(false) }
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(
+                Brush.radialGradient(
+                    listOf(color.copy(alpha = if (pressed) 0.5f else 0.18f), Color(0xFF101D22)),
+                    radius = 60f,
+                ),
+            )
+            .border(2.dp, color, CircleShape)
+            .pointerInput(action) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    pressed = true
+                    onAction(action, true)
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (event.changes.none { it.pressed }) break
+                        event.changes.forEach { if (!it.pressed) it.consume() }
+                    }
+                    pressed = false
+                    onAction(action, false)
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (pressed) UiText else UiText.copy(alpha = 0.92f), fontSize = 20.sp, fontWeight = FontWeight.Black)
+    }
+}
+
+@Composable
+private fun PillButton(
+    text: String,
+    opacity: Float,
+    modifier: Modifier = Modifier,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Box(
+        modifier = modifier
+            .alpha(opacity)
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (pressed) UiCyan.copy(alpha = 0.25f) else Color(0xE6101D22))
+            .border(1.5.dp, if (pressed) UiCyan else UiLine, RoundedCornerShape(999.dp))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            color = if (danger) Color(0xFFFF8A6B) else UiText,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun GameSettingsOverlay(
+    onContinue: () -> Unit,
+    onSave: () -> Unit,
+    onLoad: () -> Unit,
+    onReset: () -> Unit,
+    onExit: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x8C031012))
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onDismiss() })
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+            .fillMaxWidth(0.41f)
+            .widthIn(min = 300.dp)
+            .fillMaxHeight(0.9f)
+                .background(Color(0xF70B171B), RoundedCornerShape(16.dp))
+                .border(2.dp, UiCyan, RoundedCornerShape(16.dp))
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 16.dp)
+                .pointerInput(Unit) {
+                    detectTapGestures { }
+                },
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text("设置", color = UiText, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                GamePanelButton("继续游戏", primary = true) { onContinue() }
+                HorizontalDivider(color = UiLine)
+                GameSettingRow("即时存档") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        GameSegButton("保存") { onSave() }
+                        GameSegButton("读取") { onLoad() }
+                    }
+                }
+                GameSettingRow("重置游戏") {
+                    GameSegButton("重置") { onReset() }
+                }
+                HorizontalDivider(color = UiLine)
+                GamePanelButton("退出到大厅", primary = false, danger = true) { onExit() }
             }
         }
     }
 }
 
 @Composable
-private fun PauseMenu(
-    onResume: () -> Unit,
-    onSave: () -> Unit,
-    onLoad: () -> Unit,
-    onReset: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onExit: () -> Unit,
-) {
+private fun GameSettingRow(label: String, content: @Composable () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = UiText.copy(alpha = 0.84f), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        content()
+    }
+}
+
+@Composable
+private fun GameSegButton(text: String, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, UiLine),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = UiText),
+    ) {
+        Text(text, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun GamePanelButton(text: String, primary: Boolean = false, danger: Boolean = false, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
     Box(
         modifier = Modifier
-            .width(320.dp)
-            .background(Color(0xF20B171B), RoundedCornerShape(8.dp))
-            .border(2.dp, UiCyan, RoundedCornerShape(8.dp))
-            .padding(18.dp),
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                when {
+                    pressed -> UiCyan.copy(alpha = 0.5f)
+                    primary -> UiCyan
+                    else -> Color(0xE6101D22)
+                },
+            )
+            .border(1.dp, if (primary || pressed) UiCyan else UiLine, RoundedCornerShape(10.dp))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("暂停", color = UiText, fontSize = 26.sp, fontWeight = FontWeight.Black)
-            Button(onClick = onResume) { Text("继续游戏") }
-            OutlinedButton(onClick = onSave) { Text("保存即时存档") }
-            OutlinedButton(onClick = onLoad) { Text("读取即时存档") }
-            OutlinedButton(onClick = onReset) { Text("重置游戏") }
-            OutlinedButton(onClick = onOpenSettings) { Text("设置") }
-            OutlinedButton(onClick = onExit) { Text("退出到大厅") }
-        }
+        Text(
+            text,
+            color = when {
+                primary -> Color(0xFF031112)
+                danger -> Color(0xFFFF8A6B)
+                else -> UiText
+            },
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 

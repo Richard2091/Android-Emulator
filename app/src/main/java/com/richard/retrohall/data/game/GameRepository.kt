@@ -67,7 +67,12 @@ class GameRepository(
                     favorite = existing.favorite,
                     lastPlayedAt = existing.lastPlayedAt,
                     totalPlayTimeMillis = existing.totalPlayTimeMillis,
-                    coverPath = game.coverPath.ifBlank { existing.coverPath },
+                    // 保留已下载到本地的封面；否则优先远程 coverUrl，确保新上线的封面可被懒加载。
+                    coverPath = if (existing.coverPath.isNotBlank() && !existing.coverPath.startsWith("http", ignoreCase = true)) {
+                        existing.coverPath
+                    } else {
+                        game.coverPath.ifBlank { existing.coverPath }
+                    },
                     description = game.description.ifBlank { existing.description },
                     hotness = game.hotness ?: existing.hotness,
                 )

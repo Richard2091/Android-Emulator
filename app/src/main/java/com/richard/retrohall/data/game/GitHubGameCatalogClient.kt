@@ -91,12 +91,8 @@ class GitHubGameCatalogClient(
     companion object {
         const val DEFAULT_MANIFEST_URL =
             "https://richard2091.github.io/FC_ROMS/manifest.v1.json"
-        val DEFAULT_MANIFEST_URLS = listOf(
-            DEFAULT_MANIFEST_URL,
+        val DEFAULT_MANIFEST_URLS = FcRomsSourceResolver.expand(
             "https://raw.githubusercontent.com/Richard2091/FC_ROMS/main/manifest.v1.json",
-            "https://fastly.jsdelivr.net/gh/Richard2091/FC_ROMS@main/manifest.v1.json",
-            "https://gcore.jsdelivr.net/gh/Richard2091/FC_ROMS@main/manifest.v1.json",
-            "https://cdn.statically.io/gh/Richard2091/FC_ROMS/main/manifest.v1.json",
         )
     }
 }

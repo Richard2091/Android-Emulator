@@ -34,7 +34,8 @@ class HasheousGameMetadataClient(
         if (lookupJson != null) {
             enriched = applyHasheousMetadata(game, lookupJson)
         }
-        enriched.copy(coverPath = cacheCover(enriched.id, enriched.coverPath))
+        // 封面统一由 CoverDownloader 懒加载缓存（raw URL 重写为 GitHub Pages 避开 429）。
+        enriched
     }
 
     private fun loadOrFetchLookup(game: LocalGame): JSONObject? {
@@ -90,10 +91,17 @@ class HasheousGameMetadataClient(
         val title = game.title.ifBlank { hasheousTitle }
         // 已有简介（含预生成中文简介）则保留，否则用 Hasheous 英文原文兜底，不做机翻。
         val description = game.description.ifBlank { rawDescription }
+        // 仓库封面优先：已有远程/本地封面时不覆盖，Hasheous 仅在封面缺失时兜底。
+        val currentCover = game.coverPath
+        val resolvedCover = if (currentCover.isBlank() || (!currentCover.startsWith("http", ignoreCase = true) && !File(currentCover).isFile)) {
+            coverUrl.ifBlank { currentCover }
+        } else {
+            currentCover
+        }
         return game.copy(
             title = title,
             description = description,
-            coverPath = coverUrl.ifBlank { game.coverPath },
+            coverPath = resolvedCover,
         )
     }
 

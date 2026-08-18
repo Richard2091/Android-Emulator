@@ -11,8 +11,8 @@ import java.security.MessageDigest
 /**
  * 懒加载下载远程封面到本地缓存。
  *
- * 封面 URL 默认指向 raw.githubusercontent.com，单 IP 高频请求可能触发 429；
- * 因此下载前会把域名重写为 GitHub Pages 对应地址（无此限流）。
+ * 封面 URL 默认指向 raw.githubusercontent.com，单 IP 高频请求可能触发 429 且大陆连通性差；
+ * 因此下载前会按 FcRomsSourceResolver 展开为 GitHub Pages / jsDelivr 等候选源逐一尝试。
  */
 class CoverDownloader(context: Context) {
     private val filesRoot = context.applicationContext.filesDir
@@ -30,27 +30,10 @@ class CoverDownloader(context: Context) {
         val target = cacheTarget(gameId, coverUrl)
         if (target.isFile && target.length() > 0L) return@withContext target.absolutePath
 
+        val candidates = FcRomsSourceResolver.expand(coverUrl)
         runCatching {
-            val connection = (URL(rewriteForPages(coverUrl)).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 10_000
-                readTimeout = 30_000
-                requestMethod = "GET"
-                setRequestProperty("User-Agent", "RetroHall")
-                setRequestProperty("Accept", "image/webp,image/*,*/*;q=0.8")
-            }
-            connection.use {
-                if (responseCode !in 200..299) return@runCatching
-                target.parentFile?.mkdirs()
-                val temp = File(target.parentFile, "${target.name}.download")
-                inputStream.use { input ->
-                    temp.outputStream().use { output -> input.copyTo(output) }
-                }
-                if (temp.length() > 0L) {
-                    if (target.exists()) target.delete()
-                    temp.renameTo(target)
-                } else {
-                    temp.delete()
-                }
+            for (candidate in candidates) {
+                if (downloadTo(candidate, target)) break
             }
         }
         if (target.isFile && target.length() > 0L) target.absolutePath else coverUrl
@@ -72,13 +55,30 @@ class CoverDownloader(context: Context) {
         return File(coverRoot, "${safeFileName(gameId)}-${sha1(coverUrl).take(12)}$ext")
     }
 
-    private fun rewriteForPages(url: String): String {
-        if (!url.contains("raw.githubusercontent.com")) return url
-        val path = url.substringAfter("raw.githubusercontent.com").substringAfter("/", "")
-        // 形如 Richard2091/FC_ROMS/<ref>/ROM/0001/cover.webp -> 跳过仓库名与 ref
-        val romIndex = path.indexOf("/ROM/")
-        val romPath = if (romIndex >= 0) path.substring(romIndex) else "/$path"
-        return "https://richard2091.github.io/FC_ROMS$romPath"
+    private fun downloadTo(sourceUrl: String, target: File): Boolean {
+        val connection = (URL(sourceUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 10_000
+            readTimeout = 30_000
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "RetroHall")
+            setRequestProperty("Accept", "image/webp,image/*,*/*;q=0.8")
+        }
+        connection.use {
+            if (responseCode !in 200..299) return false
+            target.parentFile?.mkdirs()
+            val temp = File(target.parentFile, "${target.name}.download")
+            temp.delete()
+            inputStream.use { input ->
+                temp.outputStream().use { output -> input.copyTo(output) }
+            }
+            if (temp.length() > 0L) {
+                if (target.exists()) target.delete()
+                temp.renameTo(target)
+                return true
+            }
+            temp.delete()
+        }
+        return false
     }
 
     private fun safeFileName(value: String): String = value.replace(Regex("""[\\/:*?"<>|]"""), "_")

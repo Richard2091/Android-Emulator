@@ -39,6 +39,22 @@ class RomDownloadManager(context: Context) {
     }
 
     private fun download(sourceUrl: String, target: File) {
+        val candidates = FcRomsSourceResolver.expand(sourceUrl)
+        var lastError: Exception? = null
+        for (candidate in candidates) {
+            try {
+                downloadFrom(candidate, target)
+                return
+            } catch (error: Exception) {
+                lastError = error
+            }
+        }
+        throw lastError ?: IllegalStateException("ROM 下载失败：无可用的下载源")
+    }
+
+    private fun downloadFrom(sourceUrl: String, target: File) {
+        val temp = File(target.parentFile, "${target.name}.download")
+        temp.delete()
         val connection = (URL(sourceUrl).openConnection() as HttpURLConnection).apply {
             connectTimeout = 10_000
             readTimeout = 60_000
@@ -48,10 +64,9 @@ class RomDownloadManager(context: Context) {
         connection.use {
             val code = responseCode
             if (code !in 200..299) {
-                throw IllegalStateException("ROM 下载失败：HTTP $code")
+                throw IllegalStateException("ROM 下载失败：HTTP $code（$sourceUrl）")
             }
             target.parentFile?.mkdirs()
-            val temp = File(target.parentFile, "${target.name}.download")
             inputStream.use { input ->
                 temp.outputStream().use { output ->
                     input.copyTo(output)

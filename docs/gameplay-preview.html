@@ -63,15 +63,12 @@
   /* 方向键：三种造型（圆形十字/一体十字/摇杆，SVG 立体底座） */
   .dpad { position: relative; width: 156px; height: 156px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 4px; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.5)); opacity: 0.85; margin-top: 53px; touch-action: none; }
   .dpad .pad-bg { display: none; position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; overflow: visible; }
-  .dpad.mode-circle .pad-bg.circle-bg,
-  .dpad.mode-plus .pad-bg.plus-bg,
-  .dpad.mode-joy .pad-bg.joy-bg { display: block; }
+  .dpad .pad-bg.joy-bg { display: block; }
   .dpad button { position: relative; z-index: 2; background: transparent; border: none; color: transparent; font-size: 15px; font-weight: 900; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 10px; user-select: none; touch-action: none; }
   .dpad button.pressed { background: rgba(53,241,221,0.10); }
   .dpad .blank { background: transparent; border: none; cursor: default; }
   .dpad svg path[data-arm].zone { fill: transparent; }
   .dpad svg path[data-arm] { transition: fill-opacity 0.1s; }
-  .dpad svg path[data-arm].lit { fill: var(--cyan); fill-opacity: 0.55; filter: drop-shadow(0 0 8px rgba(53,241,221,0.85)); }
   .dpad svg path[data-arm].zone.lit { fill: url(#zoneGrad); fill-opacity: 1; filter: blur(1.5px); }
   .joy-head { display: none; position: absolute; z-index: 3; left: 50%; top: 50%; width: 56px; height: 56px; border-radius: 50%; transform: translate(-50%, -50%); background: radial-gradient(circle at 34% 30%, #2e454d, #0f191d 74%); border: 2px solid var(--cyan); box-shadow: 0 6px 14px rgba(0,0,0,0.55), inset 0 -5px 9px rgba(0,0,0,0.35); transition: transform 0.08s; touch-action: none; cursor: grab; }
   .dpad.mode-joy .joy-head { display: block; }
@@ -102,7 +99,6 @@
   /* 画面 */
   .viewer { flex: 1; background: #000; border: 2px solid var(--line); border-radius: 10px; position: relative; overflow: hidden; display: flex; min-height: 0; }
   .viewer .ratio-box { position: relative; margin: auto; height: 100%; aspect-ratio: 4 / 3; max-width: 100%; overflow: hidden; }
-  .viewer.fullscreen .ratio-box { height: 100%; width: 100%; aspect-ratio: auto; }
   .viewer .ratio-box canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 
   /* Overlay */
@@ -123,9 +119,6 @@
   .panel button.primary { background: var(--cyan); color: #031112; border-color: var(--cyan); }
   .panel button.danger:hover { border-color: #ff6b49; background: rgba(255,107,73,0.16); }
   .panel .section { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
-  .ratio-opts { display: flex; gap: 8px; }
-  .ratio-opts button { flex: 1; font-size: 12px; padding: 9px 0; }
-  .ratio-opts button.on { background: var(--cyan); color: #031112; border-color: var(--cyan); }
   .hint { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.7; }
 
   /* ===== 手机下方：操作日志 + 快捷键 ===== */
@@ -159,35 +152,7 @@
       <div class="stage">
         <!-- 左列 -->
         <div class="side-col">
-          <div class="dpad mode-circle" id="dpad">
-            <svg class="pad-bg circle-bg" viewBox="0 0 100 100">
-              <defs>
-                <radialGradient id="bg1" cx="50%" cy="42%" r="72%">
-                  <stop offset="0%" stop-color="#22343b"/><stop offset="100%" stop-color="#0b1215"/>
-                </radialGradient>
-                <linearGradient id="armg" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#2c4149"/><stop offset="100%" stop-color="#141f24"/>
-                </linearGradient>
-              </defs>
-              <circle cx="50" cy="50" r="48" fill="url(#bg1)" stroke="rgba(218,241,244,0.25)" stroke-width="1.5"/>
-              <path data-arm="up" d="M37 16 h26 a4 4 0 0 1 4 4 v22 a4 4 0 0 1 -4 4 h-26 a4 4 0 0 1 -4 -4 v-22 a4 4 0 0 1 4 -4 z" fill="url(#armg)" stroke="rgba(53,241,221,0.30)" stroke-width="1"/>
-              <path data-arm="down" d="M37 54 h26 a4 4 0 0 1 4 4 v22 a4 4 0 0 1 -4 4 h-26 a4 4 0 0 1 -4 -4 v-22 a4 4 0 0 1 4 -4 z" fill="url(#armg)" stroke="rgba(53,241,221,0.30)" stroke-width="1"/>
-              <path data-arm="left" d="M16 37 h22 a4 4 0 0 1 4 4 v26 a4 4 0 0 1 -4 4 h-22 a4 4 0 0 1 -4 -4 v-26 a4 4 0 0 1 4 -4 z" fill="url(#armg)" stroke="rgba(53,241,221,0.30)" stroke-width="1"/>
-              <path data-arm="right" d="M54 37 h22 a4 4 0 0 1 4 4 v26 a4 4 0 0 1 -4 4 h-22 a4 4 0 0 1 -4 -4 v-26 a4 4 0 0 1 4 -4 z" fill="url(#armg)" stroke="rgba(53,241,221,0.30)" stroke-width="1"/>
-              <circle cx="50" cy="50" r="9" fill="#0a1215" stroke="rgba(218,241,244,0.18)" stroke-width="1"/>
-            </svg>
-            <svg class="pad-bg plus-bg" viewBox="0 0 100 100">
-              <defs>
-                <linearGradient id="armg2" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#2c4149"/><stop offset="100%" stop-color="#141f24"/>
-                </linearGradient>
-              </defs>
-              <path data-arm="up" d="M37 8 h26 a5 5 0 0 1 5 5 v31 a5 5 0 0 1 -5 5 h-26 a5 5 0 0 1 -5 -5 v-31 a5 5 0 0 1 5 -5 z" fill="url(#armg2)" stroke="rgba(53,241,221,0.40)" stroke-width="1.5"/>
-              <path data-arm="down" d="M37 51 h26 a5 5 0 0 1 5 5 v31 a5 5 0 0 1 -5 5 h-26 a5 5 0 0 1 -5 -5 v-31 a5 5 0 0 1 5 -5 z" fill="url(#armg2)" stroke="rgba(53,241,221,0.40)" stroke-width="1.5"/>
-              <path data-arm="left" d="M8 37 h31 a5 5 0 0 1 5 5 v26 a5 5 0 0 1 -5 5 h-31 a5 5 0 0 1 -5 -5 v-26 a5 5 0 0 1 5 -5 z" fill="url(#armg2)" stroke="rgba(53,241,221,0.40)" stroke-width="1.5"/>
-              <path data-arm="right" d="M51 37 h31 a5 5 0 0 1 5 5 v26 a5 5 0 0 1 -5 5 h-31 a5 5 0 0 1 -5 -5 v-26 a5 5 0 0 1 5 -5 z" fill="url(#armg2)" stroke="rgba(53,241,221,0.40)" stroke-width="1.5"/>
-              <circle cx="50" cy="50" r="8" fill="#0a1215" stroke="rgba(218,241,244,0.18)" stroke-width="1"/>
-            </svg>
+          <div class="dpad mode-joy" id="dpad">
             <svg class="pad-bg joy-bg" viewBox="0 0 100 100">
               <defs>
                 <radialGradient id="bg2" cx="50%" cy="42%" r="72%">
@@ -243,21 +208,6 @@
           <button class="primary" onclick="resume()">继续游戏</button>
           <div class="section">
             <div class="setrow">
-              <span class="label">方向键样式</span>
-              <div class="seg" id="padOpts">
-                <button id="optPadCircle" class="on" onclick="setPadStyle('circle')">圆形十字</button>
-                <button id="optPadPlus" onclick="setPadStyle('plus')">一体十字</button>
-                <button id="optPadJoy" onclick="setPadStyle('joy')">摇杆</button>
-              </div>
-            </div>
-            <div class="setrow">
-              <span class="label">画面比例</span>
-              <div class="seg">
-                <button id="optDefault" class="on" onclick="setRatio('default')">默认</button>
-                <button id="optFullscreen" onclick="setRatio('fullscreen')">全屏</button>
-              </div>
-            </div>
-            <div class="setrow">
               <span class="label">即时存档</span>
               <div class="seg">
                 <button onclick="log('保存即时存档 → 手动槽 1');">保存</button>
@@ -290,7 +240,7 @@
   const cv = document.getElementById('frame');
   const ctx = cv.getContext('2d');
   const viewer = document.getElementById('viewer');
-  let paused = false, ratio = 'default';
+  let paused = false;
   let px = 118, py = 132, vy = 0, onGround = true;
   let moveX = 0, moveY = 0;
 
@@ -488,28 +438,6 @@
     closeAll(); setPaused(false);
     log('退出到大厅（结束会话，保存 SRAM）');
     alert('（预览）已退出到大厅');
-  }
-  function setPadStyle(s) {
-    const d = document.getElementById('dpad');
-    d.classList.remove('mode-circle', 'mode-plus', 'mode-joy');
-    d.classList.add('mode-' + s);
-    document.querySelectorAll('#padOpts button').forEach(b => b.classList.remove('on'));
-    document.getElementById('optPad' + (s === 'circle' ? 'Circle' : s === 'plus' ? 'Plus' : 'Joy')).classList.add('on');
-    paintArms();
-    log('方向键 → ' + ({ circle: '圆形十字', plus: '一体十字', joy: '摇杆' })[s]);
-  }
-  function setRatio(r) {
-    ratio = r;
-    if (r === 'fullscreen') {
-      viewer.classList.add('fullscreen');
-      document.getElementById('optFullscreen').classList.add('on');
-      document.getElementById('optDefault').classList.remove('on');
-    } else {
-      viewer.classList.remove('fullscreen');
-      document.getElementById('optDefault').classList.add('on');
-      document.getElementById('optFullscreen').classList.remove('on');
-    }
-    log('画面比例 → ' + (r === 'fullscreen' ? '全屏' : '默认 4:3'));
   }
 </script>
 </body>

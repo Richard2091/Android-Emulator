@@ -83,12 +83,8 @@ class ZhMetadataClient(
     companion object {
         const val DEFAULT_ZH_METADATA_URL =
             "https://richard2091.github.io/FC_ROMS/zh-metadata.v1.json"
-        val DEFAULT_ZH_METADATA_URLS = listOf(
-            DEFAULT_ZH_METADATA_URL,
+        val DEFAULT_ZH_METADATA_URLS = FcRomsSourceResolver.expand(
             "https://raw.githubusercontent.com/Richard2091/FC_ROMS/main/zh-metadata.v1.json",
-            "https://fastly.jsdelivr.net/gh/Richard2091/FC_ROMS@main/zh-metadata.v1.json",
-            "https://gcore.jsdelivr.net/gh/Richard2091/FC_ROMS@main/zh-metadata.v1.json",
-            "https://cdn.statically.io/gh/Richard2091/FC_ROMS/main/zh-metadata.v1.json",
         )
     }
 }
