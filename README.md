@@ -10,6 +10,7 @@
 
 - 公开下载：`RetroHall-v0.1.0-release.apk`
 - 本地验证：`app/build/outputs/apk/debug/app-debug.apk`
+- 公开 release 包含已审查的 libretro 模拟器核心，但不包含 ROM、私有封面、存档或签名材料。
 
 ## 已实现
 
@@ -46,7 +47,7 @@
 
 本仓库代码采用 MIT License，详见 `LICENSE`。
 
-libretro core、ROM、封面、存档和签名文件不属于公开源码的一部分，不应提交到 git，也不应打入公开 APK。Debug APK 仅用于个人研究、本地验证和私有设备测试；公开分发前必须重新检查 ROM 权利、core 许可证和 APK 内容。
+libretro core、ROM、封面、存档和签名文件不属于公开源码的一部分，不应提交到 git。公开 Release APK 允许打入已审查许可证的 libretro core；ROM、私有封面、存档和签名材料不得打入公开 APK。Debug APK 仅用于个人研究、本地验证和私有设备测试；公开分发前必须重新检查 ROM 权利、core 许可证和 APK 内容。
 
 ## 当前边界
 

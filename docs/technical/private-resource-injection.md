@@ -6,7 +6,7 @@
 
 - App 体验上是“内置游戏库”，用户打开即可选择游戏。
 - 公开仓库不提交 ROM、私有封面、私有 core。
-- 公开 APK 不发布带 ROM 的产物。
+- 公开 APK 可以发布带 libretro core 的产物，但不发布带 ROM 的产物。
 - 本地 Debug / private build 可以注入私有资源，完成真实 NES 验收。
 
 ## 私有目录
@@ -69,13 +69,16 @@ D:\data\AI\Private\Android-Emulator\
 -> App 首次启动复制到 files/
 ```
 
-Debug source set 可把生成目录作为 assets：
+Debug source set 可把生成目录作为 assets；Release source set 只挂载 release core assets：
 
 ```kotlin
 android {
     sourceSets {
         getByName("debug") {
             assets.srcDir(layout.buildDirectory.dir("generated/retrohallPrivateAssets"))
+        }
+        getByName("release") {
+            assets.srcDir(layout.buildDirectory.dir("generated/retrohallReleaseCoreAssets"))
         }
     }
 }
@@ -85,8 +88,10 @@ Gradle copy task 的职责：
 
 - 读取 `local.properties` 中的 `retrohall.privateAssetsDir`
 - 检查 `manifest.json` 是否存在
-- 复制 `manifest.json`、`roms/`、`covers/`、`cores/`
-- 目标目录为 `app/build/generated/retrohallPrivateAssets/retrohall_private/`
+- Debug 构建复制 `manifest.json`、`roms/`、`covers/`、`cores/`
+- Release 构建写入 `games: []` 的 manifest，并只复制 `cores/**/*.so`
+- Debug 目标目录为 `app/build/generated/retrohallPrivateAssets/retrohall_private/`
+- Release 目标目录为 `app/build/generated/retrohallReleaseCoreAssets/retrohall_private/`
 - 私有目录缺失时不阻止普通 Debug 构建，但记录 warning
 
 ## 运行期初始化
@@ -124,5 +129,6 @@ retrohall.privateAssetsDir=D:\\data\\AI\\Private\\Android-Emulator
 - 公开仓库没有 `.nes` 文件。
 - 公开仓库没有私有 core `.so` 文件。
 - Debug / private build 可读取私有 manifest。
+- Release build 可打包 `assets/retrohall_private/cores/{abi}/fceumm_libretro_android.so`。
 - App 首次启动能把私有资源复制到 App 私有目录。
 - 至少一个 NES 游戏可以从大厅启动并进入真实 libretro 流程。

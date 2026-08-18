@@ -65,6 +65,19 @@ val releaseSigningConfig = run {
 }
 
 val privateAssetsDir = resolveProperty("retrohall.privateAssetsDir", "RETROHALL_PRIVATE_ASSETS_DIR")
+val debugGeneratedPrivateAssetsDir = layout.buildDirectory.get().asFile.resolve("generated/retrohallPrivateAssets")
+val releaseGeneratedCoreAssetsDir = layout.buildDirectory.get().asFile.resolve("generated/retrohallReleaseCoreAssets")
+
+fun sanitizeReleaseManifest(text: String): String {
+    val gamesSection = Regex("(?s)\"games\"\\s*:\\s*\\[.*?\\]\\s*,")
+    return gamesSection.replace(text, "\"games\": [],")
+}
+
+fun manifestCorePaths(text: String): Set<String> =
+    Regex("\"(cores/[^\"\\\\]+(?:/[^\"\\\\]+)*\\.so)\"")
+        .findAll(text)
+        .map { it.groupValues[1] }
+        .toSet()
 
 android {
     namespace = "com.richard.retrohall"
@@ -125,7 +138,10 @@ android {
 
     sourceSets {
         getByName("debug") {
-            assets.srcDir(layout.buildDirectory.dir("generated/retrohallPrivateAssets"))
+            assets.srcDir(debugGeneratedPrivateAssetsDir)
+        }
+        getByName("release") {
+            assets.srcDir(releaseGeneratedCoreAssetsDir)
         }
     }
 }
@@ -139,17 +155,82 @@ val prepareRetroHallPrivateAssets by tasks.registering(Copy::class) {
     if (privateAssetsDir != null) {
         from(file(privateAssetsDir))
     }
-    into(layout.buildDirectory.dir("generated/retrohallPrivateAssets/retrohall_private"))
+    into(debugGeneratedPrivateAssetsDir.resolve("retrohall_private"))
+}
+
+val prepareRetroHallReleaseCoreAssets by tasks.registering {
+    onlyIf {
+        privateAssetsDir != null &&
+            File(file(privateAssetsDir), "manifest.json").isFile &&
+            File(file(privateAssetsDir), "cores").isDirectory
+    }
+    if (privateAssetsDir != null) {
+        inputs.file(File(file(privateAssetsDir), "manifest.json"))
+        inputs.dir(File(file(privateAssetsDir), "cores"))
+    }
+    outputs.dir(releaseGeneratedCoreAssetsDir)
+    doLast {
+        val sourceDir = file(privateAssetsDir ?: return@doLast)
+        val manifestSource = File(sourceDir, "manifest.json")
+        val sourceCoresDir = File(sourceDir, "cores")
+        check(manifestSource.isFile) {
+            "Release manifest is missing: ${manifestSource.absolutePath}"
+        }
+        check(sourceCoresDir.isDirectory) {
+            "Release core assets dir does not exist: ${sourceCoresDir.absolutePath}"
+        }
+
+        val releaseRoot = releaseGeneratedCoreAssetsDir.resolve("retrohall_private")
+        releaseGeneratedCoreAssetsDir.deleteRecursively()
+        releaseRoot.mkdirs()
+        val manifestText = manifestSource.readText(Charsets.UTF_8)
+        val sanitizedManifest = sanitizeReleaseManifest(manifestText)
+        val corePaths = manifestCorePaths(sanitizedManifest)
+        check(corePaths.isNotEmpty()) {
+            "Release manifest does not reference any libretro core."
+        }
+        releaseRoot.resolve("manifest.json").writeText(sanitizedManifest, Charsets.UTF_8)
+
+        corePaths.forEach { relativeCorePath ->
+            val sourceFile = File(sourceDir, relativeCorePath)
+            check(sourceFile.isFile) {
+                "Release core file is missing: ${sourceFile.absolutePath}"
+            }
+            val targetFile = releaseRoot.resolve(relativeCorePath)
+            targetFile.parentFile?.mkdirs()
+            sourceFile.copyTo(targetFile, overwrite = true)
+        }
+    }
 }
 
 tasks.matching { it.name == "mergeDebugAssets" }.configureEach {
     dependsOn(prepareRetroHallPrivateAssets)
 }
 
+tasks.matching { it.name == "mergeReleaseAssets" }.configureEach {
+    dependsOn(prepareRetroHallReleaseCoreAssets)
+}
+
+tasks.matching {
+    it.name.contains("Release", ignoreCase = true) &&
+        it.name.contains("Lint", ignoreCase = true)
+}.configureEach {
+    dependsOn(prepareRetroHallReleaseCoreAssets)
+}
+
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     doFirst {
         checkNotNull(releaseSigningConfig) {
             "Release signing config is missing. Set retrohall.release.storeFile, retrohall.release.storePassword, retrohall.release.keyAlias and retrohall.release.keyPassword, or provide RETROHALL_RELEASE_STORE_FILE, RETROHALL_RELEASE_STORE_PASSWORD, RETROHALL_RELEASE_KEY_ALIAS and RETROHALL_RELEASE_KEY_PASSWORD."
+        }
+        checkNotNull(privateAssetsDir) {
+            "Release private assets dir is missing. Set retrohall.privateAssetsDir or RETROHALL_PRIVATE_ASSETS_DIR so release APK can package the emulator core."
+        }
+        check(File(file(privateAssetsDir), "manifest.json").isFile) {
+            "Release manifest is missing: ${File(file(privateAssetsDir), "manifest.json").absolutePath}"
+        }
+        check(File(file(privateAssetsDir), "cores").isDirectory) {
+            "Release core assets dir does not exist: ${File(file(privateAssetsDir), "cores").absolutePath}"
         }
     }
 }

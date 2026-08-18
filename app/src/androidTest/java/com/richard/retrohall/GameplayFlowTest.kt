@@ -7,7 +7,6 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithContentDescription
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -67,7 +66,7 @@ class GameplayFlowTest {
             compose.onAllNodesWithContentDescription("魂斗罗").fetchSemanticsNodes().isNotEmpty()
         }
         println("[GameplayTest] tile visible, clicking")
-        compose.onNodeWithContentDescription("魂斗罗").performTouchInput { click() }
+        compose.onAllNodesWithContentDescription("魂斗罗")[0].performTouchInput { click() }
         compose.waitForIdle()
         val detailCount = compose.onAllNodes(hasText("最近游玩")).fetchSemanticsNodes().size
         val startCount = compose.onAllNodes(hasText("开始游戏")).fetchSemanticsNodes().size

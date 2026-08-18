@@ -22,6 +22,18 @@ Debug APK 仅用于个人研究和本地验证。
 
 `0.1.0` 公开发布使用 Release APK。
 
+如果要把模拟器核心一起打入 Release 包，必须先配置私有资源目录：
+
+- `retrohall.privateAssetsDir`
+- `RETROHALL_PRIVATE_ASSETS_DIR`
+
+Release 构建只从私有资源目录复制：
+
+- `manifest.json` 中的 `cores` 映射，`games` 会被置为空数组。
+- `cores/**/*.so`
+
+Release 构建不会复制 `roms/`、`covers/` 或签名材料。
+
 构建命令：
 
 ```powershell
@@ -35,6 +47,7 @@ app/build/outputs/apk/release/app-release.apk
 ```
 
 如果未提供 release 签名配置，构建会直接失败，不会产出可分发 APK。
+如果未提供私有资源目录，release 构建也会直接失败，不会产出带模拟器核心的 APK。
 
 签名配置通过本地 `local.properties` 或环境变量读取：
 
@@ -54,7 +67,8 @@ Release APK 必须先确认：
 
 - APK 不包含商业 ROM。
 - APK 不包含私有 ROM。
-- APK 不包含私有测试资源。
+- APK 不包含私有封面或私有测试 ROM。
+- APK 包含的 libretro core 已完成许可证检查。
 - APK 不包含签名文件。
 - 许可证边界已检查。
 
@@ -99,4 +113,4 @@ Debug APK 只用于：
 - 本地验证
 - 私有设备测试
 
-Release APK 用于公开下载，但不得打入 ROM、私有资源或签名材料。
+Release APK 用于公开下载，允许打入已审查许可证的 libretro core；不得打入 ROM、私有封面、存档或签名材料。

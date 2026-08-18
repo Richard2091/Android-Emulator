@@ -90,7 +90,7 @@ ROM 和资源边界：
 ## 执行原则
 
 - 先保证代码、文档、测试和目录结构一致。
-- 保留 `FakeEmulatorSession` 作为兜底；真实 core / ROM 路径可以写成已做本地私有资源冒烟，但公开仓库不把 ROM/core 当成可分发验收物。
+- 保留 `FakeEmulatorSession` 作为兜底；真实 ROM 只作为本地私有资源验收物，公开 Release APK 可以打包已审查许可证的 libretro core。
 - 每完成一个任务，运行对应验证命令。
 - 不提交 ROM、私有资源、签名文件或带 ROM 的 APK。
 - 不添加第一版明确禁止的入口：本地 ROM 导入、游戏源、账号、云同步。
