@@ -29,6 +29,14 @@
 .\gradlew.bat assembleDebug
 ```
 
+## 在线游戏库 Pages
+
+仓库新增 `.github/workflows/publish-game-library-pages.yml`，用于扫描 `games/<游戏目录>/game.json` 并发布 `manifest.v1.json` 与 `search-index.v1.json` 到 GitHub Pages。仓库还没有 `games/` 目录时会发布空游戏索引，这是初始化阶段的预期结果。
+Pages 根路径会同时生成一个静态首页，便于直接访问和校验发布结果。
+
+当前 Android 工程仍默认忽略 `*.nes` 等私有资源；实际 ROM 资源仓库需要单独确认版权、仓库权限和 `.gitignore` 策略。
+Pages 生成会把封面下载并缓存到静态输出目录，再把 `coverUrl` 写成可直接访问的静态地址。
+
 ## 当前边界
 
 界面和业务流程目前通过 `FakeEmulatorSession` 验证；`LibretroHost` 已提供原生接口定义，但尚未完成真实核心加载、音视频渲染和输入循环集成。
