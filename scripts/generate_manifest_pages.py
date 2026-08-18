@@ -670,109 +670,283 @@ def write_index_html(
     base_url: str,
     sort: str = "id",
 ) -> None:
-    games = manifest.get("games", [])
-    generated_at = html.escape(str(manifest.get("generatedAt", "")))
+    games = list(manifest.get("games", []))
+    search_lookup = {
+        str(item.get("id")): item
+        for item in search_index.get("games", [])
+        if isinstance(item, dict) and item.get("id") is not None
+    }
+    generated_at = title_text(manifest.get("generatedAt", ""))
     game_count = len(games)
     base_href = f"{base_url}/" if base_url else ""
     sort_label = {
-        "id": "ID",
+        "id": "编号",
         "name": "名称",
         "hotness": "热度",
         "releaseDate": "发布时间",
-    }.get(sort, "ID")
-    sort_js = {"name": "title", "hotness": "hotness", "releaseDate": "date"}.get(sort, "title")
+    }.get(sort, "编号")
+    initial_sort = {"name": "title", "hotness": "hotness", "releaseDate": "date"}.get(sort, "id")
 
-    rows = []
-    for game in games:
-        title = html.escape(title_text(game.get("displayTitle") or game.get("title") or game.get("id")))
-        category = html.escape(title_text(game.get("category", "")))
-        platform = html.escape(title_text(game.get("platform", "")))
-        description = html.escape(title_text(game.get("description", "")))
-        cover_url = title_text(game.get("assets", {}).get("coverUrl", ""))
+    def format_time_stamp(value: Any) -> str:
+        text = title_text(value).strip()
+        if not text:
+            return "未知"
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return text
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M")
+
+    def format_date_label(value: Any) -> str:
+        stamp = parse_date_stamp(value)
+        if stamp is None:
+            return "未填写"
+        return datetime.fromtimestamp(stamp, tz=timezone.utc).strftime("%Y-%m-%d")
+
+    def fallback_colors(seed: str) -> tuple[str, str]:
+        digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()
+        first = int(digest[:2], 16) % 360
+        second = (first + 42 + int(digest[2:4], 16) % 24) % 360
+        return f"hsl({first} 58% 24%)", f"hsl({second} 64% 38%)"
+
+    def render_action_link(label: str, href: str, extra_class: str = "") -> str:
+        if not href:
+            return f'<span class="action-link disabled{extra_class}">{html.escape(label)}</span>'
+        return (
+            f'<a class="action-link{extra_class}" href="{html.escape(href)}" target="_blank" rel="noreferrer">'
+            f"{html.escape(label)}</a>"
+        )
+
+    metric_items = [
+        ("总条目", str(game_count), "当前可浏览游戏数量"),
+        ("分类", str(len({title_text(game.get("category", "")).strip() for game in games if title_text(game.get("category", "")).strip()})), "按分类快速筛选"),
+        ("平台", str(len({title_text(game.get("platform", "")).strip() for game in games if title_text(game.get("platform", "")).strip()})), "当前索引覆盖平台"),
+        ("带封面", str(sum(1 for game in games if title_text(game.get("assets", {}).get("coverUrl", "")).strip())), "封面可直接预览"),
+    ]
+    metrics_html = "\n".join(
+        f"""
+        <article class="stat-card">
+          <strong>{html.escape(value)}</strong>
+          <span>{html.escape(label)}</span>
+          <small>{html.escape(note)}</small>
+        </article>
+        """
+        for label, value, note in metric_items
+    )
+
+    cards_html = []
+    for index, game in enumerate(games):
+        game_id = title_text(game.get("id") or f"{index + 1}")
+        title_raw = title_text(game.get("displayTitle") or game.get("title") or game_id).strip()
+        category_raw = title_text(game.get("category", "")).strip() or "未分类"
+        platform_raw = title_text(game.get("platform", "")).strip() or "未指定"
+        description_raw = title_text(game.get("description", "")).strip() or "暂无简介"
+        cover_url = title_text(game.get("assets", {}).get("coverUrl", "")).strip()
+        search_item = search_lookup.get(game_id, {})
+        search_terms = " ".join(
+            [
+                title_raw,
+                category_raw,
+                platform_raw,
+                description_raw,
+                game_id,
+                " ".join(str(keyword) for keyword in (search_item.get("keywords") or []) if keyword),
+            ]
+        ).strip()
+        hotness = game.get("hotness")
+        hotness_text = f"{hotness:g}" if hotness is not None else "未提供"
+        hotness_sort = f"{hotness:g}" if hotness is not None else ""
+        release_text = title_text(game.get("releaseDate") or "")
+        release_sort = ""
+        if release_text:
+            stamp = parse_date_stamp(release_text)
+            if stamp is not None:
+                release_sort = f"{stamp:g}"
         rom_url = ""
         roms = game.get("roms") or []
         if roms:
             first_rom = roms[0]
-            rom_url = title_text(first_rom.get("url") or first_rom.get("path") or "")
+            rom_url = title_text(first_rom.get("url") or first_rom.get("path") or "").strip()
 
-        hotness = game.get("hotness")
-        if hotness is None:
-            hotness_value = ""
-            hotness_text = "—"
+        cover_alt = html.escape(f"{title_raw} 封面")
+        if cover_url:
+            cover_inner = (
+                f'<img class="card-cover-image" src="{html.escape(cover_url)}" alt="{cover_alt}" '
+                'loading="lazy" decoding="async" />'
+            )
         else:
-            hotness_value = f"{hotness:g}"
-            hotness_text = f"{hotness:g}"
+            tone_a, tone_b = fallback_colors(game_id or title_raw)
+            short_title = html.escape((title_raw[:2] or "游戏"))
+            cover_inner = (
+                f'<div class="card-cover-fallback" style="--tone-a:{tone_a};--tone-b:{tone_b}">'
+                f"<strong>{short_title}</strong>"
+                "<span>暂无封面</span>"
+                "</div>"
+            )
 
-        release_text = title_text(game.get("releaseDate") or "")
-        date_value = ""
-        if release_text:
-            stamp = parse_date_stamp(release_text)
-            if stamp is not None:
-                date_value = f"{stamp:g}"
+        badge_label = category_raw if category_raw != "未分类" else platform_raw
+        if hotness is not None and hotness >= 9:
+            badge_text = "热门"
+        elif release_sort:
+            badge_text = "新上"
+        else:
+            badge_text = "条目"
 
-        cover_html = f'<a href="{html.escape(cover_url)}" target="_blank" rel="noreferrer">封面</a>' if cover_url else "无"
-        rom_html = f'<a href="{html.escape(rom_url)}" target="_blank" rel="noreferrer">资源</a>' if rom_url else "无"
-
-        rows.append(
-            "<tr>"
-            f'<td data-title="{html.escape(title_text(game.get("displayTitle") or game.get("title") or game.get("id"))).casefold()}" class="sortable-cell">{title}</td>'
-            f"<td>{category}</td>"
-            f"<td>{platform}</td>"
-            f"<td>{description}</td>"
-            f'<td data-hotness="{hotness_value}" class="sortable-cell">{hotness_text}</td>'
-            f'<td data-date="{date_value}" class="sortable-cell">{html.escape(release_text) or "—"}</td>'
-            f"<td>{cover_html}</td>"
-            f"<td>{rom_html}</td>"
-            "</tr>"
+        cards_html.append(
+            f"""
+            <article class="game-card"
+              data-game-card
+              data-id="{html.escape(game_id.casefold())}"
+              data-title="{html.escape(title_raw.casefold())}"
+              data-search="{html.escape(search_terms.casefold())}"
+              data-hotness="{html.escape(hotness_sort)}"
+              data-date="{html.escape(release_sort)}"
+              data-index="{index}"
+            >
+              <div class="card-cover">
+                {cover_inner}
+                <div class="card-cover-mask"></div>
+                <div class="card-cover-badges">
+                  <span class="chip chip-soft">{html.escape(badge_label)}</span>
+                  <span class="chip chip-strong">{html.escape(platform_raw)}</span>
+                </div>
+                <div class="card-cover-tag">{html.escape(badge_text)}</div>
+              </div>
+              <div class="card-body">
+                <div class="card-title-row">
+                  <div>
+                    <h3>{html.escape(title_raw)}</h3>
+                    <p>{html.escape(description_raw)}</p>
+                  </div>
+                  <span class="card-index">#{index + 1:02d}</span>
+                </div>
+                <div class="card-meta">
+                  <span>热度 {html.escape(hotness_text)}</span>
+                  <span>发布日期 {html.escape(format_date_label(release_text))}</span>
+                </div>
+                <div class="card-actions">
+                  {render_action_link("查看封面", cover_url, " cover")}
+                  {render_action_link("打开资源", rom_url, " resource")}
+                </div>
+              </div>
+            </article>
+            """
         )
 
-    if rows:
-        rows_html = "\n".join(rows)
-    else:
-        rows_html = (
-            "<tr>"
-            '<td colspan="8" class="empty">当前没有可发布的游戏条目。把 `游戏目录` 下的 `game.json` 加进来后再运行生成脚本即可。</td>'
-            "</tr>"
-        )
+    cards_html_text = "\n".join(cards_html) if cards_html else ""
+    empty_html = (
+        '<div class="empty-state" id="emptyState" hidden>'
+        '<strong>没有找到匹配的条目</strong>'
+        '<span>换一个关键词，或者切回默认排序再看一次。</span>'
+        "</div>"
+    )
 
     sort_script = """
     <script>
     (function () {
       "use strict";
-      var tbody = document.querySelector("tbody");
-      if (!tbody) return;
-      var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
-      var ths = Array.prototype.slice.call(document.querySelectorAll("th[data-sort]"));
+      var grid = document.getElementById("gameGrid");
+      if (!grid) return;
+      var cards = Array.prototype.slice.call(grid.querySelectorAll("[data-game-card]"));
+      var searchInput = document.getElementById("searchInput");
+      var emptyState = document.getElementById("emptyState");
+      var visibleCount = document.getElementById("visibleCount");
+      var sortLabel = document.getElementById("currentSortLabel");
+      var buttons = Array.prototype.slice.call(document.querySelectorAll("[data-sort]"));
+      var currentSort = "__ACTIVE__";
       var collator = typeof Intl !== "undefined" && typeof Intl.Collator === "function"
         ? new Intl.Collator("zh-Hans-CN", { sensitivity: "base", numeric: true })
         : null;
-      var active = "__ACTIVE__";
-      var dir = active === "title" ? 1 : -1;
 
-      function readValue(row, key) {
-        var v = row.getAttribute("data-" + key) || "";
-        if (key === "title") return v;
-        var n = parseFloat(v);
-        return isNaN(n) ? -Infinity : n;
+      function normalize(text) {
+        return String(text || "").toLowerCase().replace(/\\s+/g, "");
       }
-      function compare(a, b, key) {
-        var av = readValue(a, key), bv = readValue(b, key);
-        if (key === "title") {
-          return collator ? collator.compare(av, bv) : (av < bv ? -1 : av > bv ? 1 : 0);
+
+      function compareText(a, b) {
+        if (collator) return collator.compare(a, b);
+        return a < b ? -1 : a > b ? 1 : 0;
+      }
+
+      function compareCard(a, b, key) {
+        if (key === "title" || key === "id") {
+          return compareText(a.dataset[key] || "", b.dataset[key] || "");
         }
-        return av - bv;
+        if (key === "hotness") {
+          var av = parseFloat(a.dataset.hotness || "");
+          var bv = parseFloat(b.dataset.hotness || "");
+          if (isNaN(av)) av = Number.NEGATIVE_INFINITY;
+          if (isNaN(bv)) bv = Number.NEGATIVE_INFINITY;
+          if (av === bv) return 0;
+          return av > bv ? -1 : 1;
+        }
+        if (key === "date") {
+          var ad = parseFloat(a.dataset.date || "");
+          var bd = parseFloat(b.dataset.date || "");
+          if (isNaN(ad)) ad = Number.NEGATIVE_INFINITY;
+          if (isNaN(bd)) bd = Number.NEGATIVE_INFINITY;
+          if (ad === bd) return 0;
+          return ad > bd ? -1 : 1;
+        }
+        return 0;
       }
-      ths.forEach(function (th) {
-        th.addEventListener("click", function () {
-          var key = th.getAttribute("data-sort");
-          if (active === key) { dir = -dir; } else { active = key; dir = key === "title" ? 1 : -1; }
-          rows.sort(function (a, b) { return compare(a, b, key) * dir; });
-          rows.forEach(function (row) { tbody.appendChild(row); });
+
+      function setActiveSort(key) {
+        currentSort = key;
+        buttons.forEach(function (button) {
+          var active = button.getAttribute("data-sort") === key;
+          button.classList.toggle("active", active);
+          button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        if (sortLabel) {
+          var label = {
+            id: "编号",
+            title: "名称",
+            hotness: "热度",
+            date: "最新"
+          }[key] || "编号";
+          sortLabel.textContent = label;
+        }
+      }
+
+      function applyState() {
+        var query = normalize(searchInput ? searchInput.value : "");
+        var visibleCards = cards.filter(function (card) {
+          return !query || normalize(card.dataset.search || "").indexOf(query) !== -1;
+        });
+        visibleCards.sort(function (a, b) { return compareCard(a, b, currentSort); });
+        visibleCards.forEach(function (card) {
+          card.hidden = false;
+          grid.appendChild(card);
+        });
+        cards.forEach(function (card) {
+          card.hidden = visibleCards.indexOf(card) === -1;
+        });
+        if (visibleCount) {
+          visibleCount.textContent = String(visibleCards.length);
+        }
+        if (emptyState) {
+          emptyState.hidden = visibleCards.length !== 0;
+        }
+      }
+
+      buttons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          setActiveSort(button.getAttribute("data-sort"));
+          applyState();
         });
       });
+
+      if (searchInput) {
+        searchInput.addEventListener("input", applyState);
+      }
+
+      setActiveSort(currentSort);
+      applyState();
     })();
     </script>
-""".replace("__ACTIVE__", sort_js)
+""".replace("__ACTIVE__", initial_sort)
 
     index_html = f"""<!doctype html>
 <html lang="zh-CN">
@@ -780,171 +954,539 @@ def write_index_html(
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>复古大厅游戏库</title>
+    <title>FC_ROMS 游戏库首页</title>
     <style>
       :root {{
-        color-scheme: light;
-        --bg: #f6f8fb;
-        --panel: #ffffff;
-        --text: #172033;
-        --muted: #5d6a82;
-        --line: #dbe2ee;
-        --accent: #2457d6;
+        color-scheme: dark;
+        --bg: #071018;
+        --panel: #0c1620;
+        --panel-2: #101d29;
+        --text: #edf5ff;
+        --muted: #94a9c2;
+        --line: rgba(134, 160, 190, 0.22);
+        --line-strong: rgba(148, 188, 225, 0.36);
+        --accent: #71e6c1;
+        --accent-2: #74a4ff;
+        --warm: #ffbf67;
+        --danger: #ff8585;
       }}
       * {{ box-sizing: border-box; }}
-      body {{
+      html, body {{
         margin: 0;
-        background: var(--bg);
+        min-height: 100%;
+      }}
+      body {{
+        background:
+          linear-gradient(180deg, #061018 0%, #04070b 100%);
         color: var(--text);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-        line-height: 1.5;
+        line-height: 1.55;
       }}
-      .wrap {{
-        max-width: 1120px;
+      body::before {{
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.65), transparent 92%);
+        opacity: 0.25;
+      }}
+      a {{
+        color: inherit;
+      }}
+      .shell {{
+        max-width: 1260px;
         margin: 0 auto;
-        padding: 32px 20px 48px;
-      }}
-      header {{
+        padding: 28px 18px 40px;
         display: grid;
-        gap: 12px;
-        margin-bottom: 24px;
+        gap: 16px;
+        position: relative;
+        z-index: 1;
+      }}
+      .hero {{
+        display: grid;
+        grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+        gap: 22px;
+        padding: 26px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background:
+          linear-gradient(135deg, rgba(114, 230, 193, 0.08), transparent 34%),
+          linear-gradient(180deg, rgba(16, 29, 41, 0.96), rgba(10, 17, 25, 0.96));
+        box-shadow: 0 22px 50px rgba(0, 0, 0, 0.22);
+      }}
+      .eyebrow {{
+        margin: 0 0 10px;
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0;
+        text-transform: none;
       }}
       h1 {{
         margin: 0;
-        font-size: 32px;
-        line-height: 1.15;
+        font-size: 34px;
+        line-height: 1.1;
+        letter-spacing: 0;
       }}
-      .meta {{
+      .hero p {{
+        margin: 14px 0 0;
+        max-width: 62ch;
         color: var(--muted);
-        font-size: 14px;
+        font-size: 15px;
       }}
-      .links {{
+      .hero-meta {{
+        margin-top: 16px;
         display: flex;
         flex-wrap: wrap;
-        gap: 12px;
-        margin: 8px 0 0;
+        gap: 10px;
       }}
-      .links a {{
-        color: var(--accent);
-        text-decoration: none;
-      }}
-      .links a:hover {{ text-decoration: underline; }}
-      .panel {{
-        background: var(--panel);
+      .hero-chip {{
+        display: inline-flex;
+        align-items: center;
+        min-height: 32px;
+        padding: 0 12px;
+        border-radius: 999px;
         border: 1px solid var(--line);
-        border-radius: 8px;
-        overflow: hidden;
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 700;
       }}
-      table {{
+      .hero-links {{
+        margin-top: 18px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }}
+      .hero-links a,
+      .action-link {{
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        padding: 0 14px;
+        border-radius: 12px;
+        border: 1px solid var(--line-strong);
+        background: rgba(255, 255, 255, 0.03);
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 700;
+        transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+      }}
+      .hero-links a:hover,
+      .action-link:hover {{
+        transform: translateY(-1px);
+        border-color: rgba(113, 230, 193, 0.6);
+        background: rgba(113, 230, 193, 0.08);
+      }}
+      .summary-grid {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }}
+      .stat-card {{
+        padding: 16px;
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+        display: grid;
+        align-content: start;
+        gap: 8px;
+      }}
+      .stat-card strong {{
+        font-size: 30px;
+        line-height: 1;
+      }}
+      .stat-card span {{
+        color: var(--muted);
+        font-size: 14px;
+      }}
+      .stat-card small {{
+        color: var(--muted);
+        font-size: 12px;
+      }}
+      .toolbar {{
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 12px;
+        align-items: center;
+        padding: 16px 18px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(16, 29, 41, 0.9);
+      }}
+      .search-field {{
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+        padding: 0 14px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+      }}
+      .search-field span {{
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }}
+      .search-field input {{
+        min-width: 0;
         width: 100%;
-        border-collapse: collapse;
+        height: 46px;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 15px;
       }}
-      thead {{
-        background: #eef3fb;
+      .search-field input::placeholder {{
+        color: rgba(148, 169, 194, 0.8);
       }}
-      th, td {{
-        padding: 12px 14px;
-        text-align: left;
-        vertical-align: top;
-        border-bottom: 1px solid var(--line);
+      .sort-group {{
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 8px;
       }}
-      th {{
+      .sort-button {{
+        min-height: 40px;
+        padding: 0 13px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text);
+        font: inherit;
         font-size: 14px;
-        color: var(--muted);
-        font-weight: 600;
-      }}
-      th[data-sort] {{
+        font-weight: 700;
         cursor: pointer;
-        user-select: none;
       }}
-      th[data-sort]:hover {{
-        color: var(--accent);
+      .sort-button.active {{
+        border-color: rgba(113, 230, 193, 0.8);
+        background: rgba(113, 230, 193, 0.12);
       }}
-      td {{
-        font-size: 14px;
-      }}
-      .empty {{
+      .result-pill {{
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 40px;
+        padding: 0 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
         color: var(--muted);
-        text-align: center;
-        padding: 32px 14px;
+        font-size: 13px;
+        font-weight: 700;
       }}
-      .note {{
-        margin-top: 16px;
+      .result-pill strong {{
+        color: var(--text);
+        font-size: 16px;
+      }}
+      .library {{
+        padding: 0;
+      }}
+      .library-head {{
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        align-items: end;
+        padding: 20px 22px 0;
+      }}
+      .library-head h2 {{
+        margin: 0;
+        font-size: 20px;
+        line-height: 1.2;
+      }}
+      .library-head p {{
+        margin: 6px 0 0;
         color: var(--muted);
         font-size: 13px;
       }}
-      code {{
-        background: #eef3fb;
-        padding: 0 4px;
-        border-radius: 4px;
+      .library-grid {{
+        padding: 18px 22px 22px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
       }}
-      @media (max-width: 780px) {{
-        .wrap {{ padding: 24px 14px 40px; }}
-        h1 {{ font-size: 26px; }}
-        table, thead, tbody, th, td, tr {{ display: block; }}
-        thead {{ display: none; }}
-        tr {{
-          border-bottom: 1px solid var(--line);
-          padding: 10px 0;
+      .game-card {{
+        min-width: 0;
+        overflow: hidden;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(17, 29, 41, 0.98), rgba(10, 16, 24, 0.98));
+        box-shadow: 0 18px 34px rgba(0, 0, 0, 0.18);
+      }}
+      .game-card[hidden] {{
+        display: none !important;
+      }}
+      .card-cover {{
+        position: relative;
+        aspect-ratio: 16 / 10;
+        overflow: hidden;
+        background: #0b141d;
+      }}
+      .card-cover-image {{
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }}
+      .card-cover-fallback {{
+        width: 100%;
+        height: 100%;
+        display: grid;
+        place-items: center;
+        gap: 6px;
+        background: linear-gradient(135deg, var(--tone-a), var(--tone-b));
+        text-align: center;
+      }}
+      .card-cover-fallback strong {{
+        font-size: 30px;
+        line-height: 1;
+      }}
+      .card-cover-fallback span {{
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 12px;
+      }}
+      .card-cover-mask {{
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, transparent 48%, rgba(5, 10, 15, 0.8) 100%);
+      }}
+      .card-cover-badges {{
+        position: absolute;
+        inset: 12px 12px auto;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        z-index: 1;
+      }}
+      .chip {{
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0 10px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(5, 10, 15, 0.75);
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 700;
+      }}
+      .chip-soft {{
+        color: var(--accent);
+      }}
+      .chip-strong {{
+        color: var(--warm);
+      }}
+      .card-cover-tag {{
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        z-index: 1;
+        min-height: 28px;
+        padding: 0 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(113, 230, 193, 0.55);
+        background: rgba(113, 230, 193, 0.12);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 800;
+      }}
+      .card-body {{
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+      }}
+      .card-title-row {{
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        align-items: flex-start;
+      }}
+      .card-title-row h3 {{
+        margin: 0;
+        font-size: 18px;
+        line-height: 1.25;
+      }}
+      .card-title-row p {{
+        margin: 7px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        min-height: 39px;
+      }}
+      .card-index {{
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }}
+      .card-meta {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }}
+      .card-meta span {{
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }}
+      .card-actions {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }}
+      .action-link.disabled {{
+        opacity: 0.5;
+        cursor: not-allowed;
+      }}
+      .action-link.cover {{
+        border-color: rgba(113, 230, 193, 0.45);
+      }}
+      .action-link.resource {{
+        border-color: rgba(116, 164, 255, 0.45);
+      }}
+      .empty-state {{
+        padding: 30px 22px 36px;
+        display: grid;
+        gap: 8px;
+        text-align: center;
+        color: var(--muted);
+      }}
+      .empty-state strong {{
+        color: var(--text);
+        font-size: 18px;
+      }}
+      .page-note {{
+        padding: 0 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }}
+      @media (max-width: 980px) {{
+        .hero {{
+          grid-template-columns: 1fr;
         }}
-        td {{
-          border: 0;
-          padding: 6px 14px;
+        .toolbar {{
+          grid-template-columns: 1fr;
         }}
-        td::before {{
-          display: block;
-          color: var(--muted);
-          font-size: 12px;
-          margin-bottom: 2px;
+        .library-head {{
+          flex-direction: column;
+          align-items: start;
         }}
-        td:nth-child(1)::before {{ content: "标题"; }}
-        td:nth-child(2)::before {{ content: "分类"; }}
-        td:nth-child(3)::before {{ content: "平台"; }}
-        td:nth-child(4)::before {{ content: "简介"; }}
-        td:nth-child(5)::before {{ content: "热度"; }}
-        td:nth-child(6)::before {{ content: "发布时间"; }}
-        td:nth-child(7)::before {{ content: "封面"; }}
-        td:nth-child(8)::before {{ content: "资源"; }}
+      }}
+      @media (max-width: 760px) {{
+        .shell {{
+          padding: 18px 12px 28px;
+        }}
+        .hero,
+        .toolbar {{
+          padding: 18px;
+          border-radius: 16px;
+        }}
+        h1 {{
+          font-size: 28px;
+        }}
+        .summary-grid {{
+          grid-template-columns: 1fr 1fr;
+        }}
+        .library-grid {{
+          grid-template-columns: 1fr;
+          padding: 16px 18px 20px;
+        }}
+        .library-head {{
+          padding: 18px 18px 0;
+        }}
+        .card-title-row {{
+          flex-direction: column;
+        }}
+        .card-index {{
+          align-self: flex-end;
+        }}
+      }}
+      @media (max-width: 520px) {{
+        .summary-grid {{
+          grid-template-columns: 1fr;
+        }}
+        .hero-links,
+        .sort-group,
+        .card-actions {{
+          width: 100%;
+        }}
+        .hero-links a,
+        .action-link,
+        .sort-button {{
+          width: 100%;
+          justify-content: center;
+        }}
       }}
     </style>
   </head>
   <body>
-    <main class="wrap">
-      <header>
-        <h1>复古大厅游戏库</h1>
-        <div class="meta">
-          共 {game_count} 个条目，默认按 {sort_label} 排序，生成时间 {generated_at}
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <div class="eyebrow">静态页面 · 在线游戏库首页</div>
+          <h1>FC_ROMS 游戏库</h1>
+          <p>把封面、分类、平台、热度和发布日期放在一屏里，先搜索再筛选，减少翻表找资源的来回折腾。</p>
+          <div class="hero-meta">
+            <span class="hero-chip">关键词搜索</span>
+            <span class="hero-chip">快速排序</span>
+            <span class="hero-chip">封面预览</span>
+            <span class="hero-chip">静态可访问</span>
+          </div>
+          <div class="hero-links">
+            <a href="{base_href}manifest.v1.json">查看清单</a>
+            <a href="{base_href}search-index.v1.json">查看索引</a>
+            <a href="{base_href}games/">资源目录</a>
+          </div>
+          <p class="page-note">当前默认按 {sort_label} 排序，生成于 {format_time_stamp(generated_at)}。</p>
         </div>
-        <div class="links">
-          <a href="{base_href}manifest.v1.json">清单文件</a>
-          <a href="{base_href}search-index.v1.json">搜索索引</a>
-          <a href="{base_href}games/">资源目录</a>
+        <div class="summary-grid">
+          {metrics_html}
         </div>
-      </header>
-
-      <section class="panel">
-        <table>
-          <thead>
-            <tr>
-              <th data-sort="title">标题</th>
-              <th>分类</th>
-              <th>平台</th>
-              <th>简介</th>
-              <th data-sort="hotness">热度</th>
-              <th data-sort="date">发布时间</th>
-              <th>封面</th>
-              <th>资源</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows_html}
-          </tbody>
-        </table>
       </section>
 
-      <div class="note">
-        说明：这个首页是静态生成的，部署到静态站点后，仓库根路径就会有可访问页面，不再直接返回 404。点击标题 / 热度 / 发布时间表头可在页面内切换排序。
-      </div>
+      <section class="toolbar" aria-label="搜索和排序">
+        <label class="search-field">
+          <span>搜索</span>
+          <input id="searchInput" type="search" placeholder="搜索名称、分类、平台、简介" autocomplete="off" />
+        </label>
+        <div class="sort-group">
+          <button class="sort-button{ ' active' if initial_sort == 'id' else '' }" data-sort="id" aria-pressed="{ 'true' if initial_sort == 'id' else 'false' }">编号</button>
+          <button class="sort-button{ ' active' if initial_sort == 'title' else '' }" data-sort="title" aria-pressed="{ 'true' if initial_sort == 'title' else 'false' }">名称</button>
+          <button class="sort-button{ ' active' if initial_sort == 'hotness' else '' }" data-sort="hotness" aria-pressed="{ 'true' if initial_sort == 'hotness' else 'false' }">热度</button>
+          <button class="sort-button{ ' active' if initial_sort == 'date' else '' }" data-sort="date" aria-pressed="{ 'true' if initial_sort == 'date' else 'false' }">最新</button>
+        </div>
+        <div class="result-pill">
+          显示 <strong id="visibleCount">{game_count}</strong> / {game_count}
+        </div>
+      </section>
+
+      <section class="library" aria-label="游戏条目">
+        <div class="library-head">
+          <div>
+            <h2>游戏条目</h2>
+            <p>点击“查看封面”或“打开资源”进入对应页面，输入关键词后会实时过滤结果。</p>
+          </div>
+          <div class="page-note">按 <span id="currentSortLabel">{sort_label}</span> 排序</div>
+        </div>
+        <div class="library-grid" id="gameGrid">
+          {cards_html_text}
+        </div>
+        {empty_html}
+      </section>
     </main>
     {sort_script}
   </body>
