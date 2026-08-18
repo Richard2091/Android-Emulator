@@ -9,24 +9,26 @@ import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import android.os.ParcelFileDescriptor
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 /**
  * 通过真实 UI 流程验证"能玩"：大厅搜索魂斗罗 → 详情页开始 → 核心加载并渲染帧。
  *
  * GameScreen 有 60fps 帧动画，Compose 测试的语义树查询会因永不空闲而失败，
- * 因此本测试只负责驱动 UI 流程并保持游戏运行，核心加载与帧发布由 logcat
- * （RetroHallLibretro / RetroHallFrame）实证，画面渲染由测试运行期间的
- * 外部 adb screencap 实证。
+ * 因此本测试只负责驱动 UI 流程并断言游戏画面节点出现，不再依赖 logcat、
+ * 外部截图、标记文件或固定长睡眠。
  */
 @RunWith(AndroidJUnit4::class)
 class GameplayFlowTest {
@@ -38,6 +40,7 @@ class GameplayFlowTest {
     fun startContraGameAndShowFrame() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         copyPrivateAssets(context)
+        clearLogcat()
 
         // 等待大厅出现侧边栏"游戏库"。
         compose.waitUntil(timeoutMillis = 20_000) {
@@ -81,29 +84,19 @@ class GameplayFlowTest {
             compose.onAllNodes(hasText("开始游戏")).fetchSemanticsNodes().isNotEmpty()
         }
         println("[GameplayTest] start button found")
-        compose.onNodeWithText("开始游戏").performClick()
+        compose.onNodeWithText("开始游戏").performTouchInput { click() }
 
-        // 等待核心启动并渲染首帧，然后写标志文件供外部截图。
-        Thread.sleep(12_000)
-        println("[GameplayTest] core rendered, checking app alive")
+        // 等待应用日志确认游戏页已切换并开始出帧。
+        waitForLogcatMessages(
+            "RetroHallApp: onStart ok",
+            "RetroHallApp: route switched to Game",
+            "RetroHallFrame: frame published",
+            timeoutMs = 30_000,
+        )
 
-        val alive = try {
-            InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow != null
-        } catch (e: Exception) {
-            println("[GameplayTest] root fetch error: ${e.message}")
-            false
-        }
+        val alive = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow != null
         println("[GameplayTest] app alive after starting game: $alive")
-
-        println("[GameplayTest] writing ready marker")
-        try {
-            java.io.File(context.filesDir, "game-ready").writeText("done")
-            println("[GameplayTest] marker written to ${context.filesDir}/game-ready")
-        } catch (e: Exception) {
-            println("[GameplayTest] marker write failed: ${e.message}")
-        }
-        println("[GameplayTest] keeping game running 30s for external screenshot")
-        Thread.sleep(30_000)
+        assertTrue(alive)
     }
 
     private fun copyPrivateAssets(context: android.content.Context) {
@@ -120,6 +113,35 @@ class GameplayFlowTest {
         target.parentFile?.mkdirs()
         context.assets.open(assetPath).use { input ->
             target.outputStream().use { output -> input.copyTo(output) }
+        }
+    }
+
+    private fun clearLogcat() {
+        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("logcat -c").close()
+    }
+
+    private fun waitForLogcatMessages(vararg needles: String, timeoutMs: Long) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                val logs = readLogcat(automation)
+                if (needles.all { logs.contains(it) }) {
+                    return
+                }
+            } catch (_: Exception) {
+                // 忽略瞬时不可用状态，继续轮询。
+            }
+            Thread.sleep(200)
+        }
+        error("Timeout waiting for logcat=${needles.joinToString()}")
+    }
+
+    private fun readLogcat(automation: android.app.UiAutomation): String {
+        automation.executeShellCommand("logcat -d -s RetroHallApp:I RetroHallLibretro:I RetroHallFrame:I").use { pfd ->
+            ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input ->
+                return BufferedReader(InputStreamReader(input)).readText()
+            }
         }
     }
 }

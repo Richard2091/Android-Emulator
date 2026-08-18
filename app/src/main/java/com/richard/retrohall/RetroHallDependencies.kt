@@ -14,6 +14,9 @@ import com.richard.retrohall.data.game.RomDownloadManager
 import com.richard.retrohall.data.game.ZhMetadataClient
 import com.richard.retrohall.data.save.SaveStateRepository
 import com.richard.retrohall.data.settings.UserSettingsStore
+import com.richard.retrohall.domain.game.CoverImageLoader
+import com.richard.retrohall.domain.save.SaveStateStore
+import com.richard.retrohall.domain.settings.CacheMaintenance
 import com.richard.retrohall.emulator.EmulatorSessionFactory
 
 /**
@@ -42,6 +45,9 @@ class RetroHallDependencies private constructor(context: Context) {
     val privateAssetInitializer: PrivateAssetInitializer = PrivateAssetInitializer(appContext, database.localGameDao())
     val cacheManager: CacheManager = CacheManager(appContext)
     val appBootstrapper: AppBootstrapper = AppBootstrapper(privateAssetInitializer, gameRepository)
+    val coverImageLoader: CoverImageLoader = coverDownloader
+    val saveStateStore: SaveStateStore = saveStateRepository
+    val cacheMaintenance: CacheMaintenance = cacheManager
 
     companion object {
         @Volatile

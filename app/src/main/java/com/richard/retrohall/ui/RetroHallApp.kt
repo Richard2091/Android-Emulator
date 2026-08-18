@@ -137,6 +137,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -156,18 +157,18 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
-import com.richard.retrohall.RetroHallDependencies
-import com.richard.retrohall.data.cache.CacheManager
 import com.richard.retrohall.data.bootstrap.AppBootstrapper
-import com.richard.retrohall.data.game.CoverDownloader
 import com.richard.retrohall.data.game.GameRepository
 import com.richard.retrohall.data.game.RomDownloadManager
-import com.richard.retrohall.data.db.SaveStateEntity
-import com.richard.retrohall.data.save.SaveStateRepository
 import com.richard.retrohall.data.settings.UserSettingsStore
+import com.richard.retrohall.RetroHallDependencies
+import com.richard.retrohall.domain.game.CoverImageLoader
 import com.richard.retrohall.domain.game.LocalGame
 import com.richard.retrohall.domain.input.GameAction
+import com.richard.retrohall.domain.save.SaveStateSlot
+import com.richard.retrohall.domain.save.SaveStateStore
 import com.richard.retrohall.domain.settings.AspectRatio
+import com.richard.retrohall.domain.settings.CacheMaintenance
 import com.richard.retrohall.domain.settings.ControlMode
 import com.richard.retrohall.domain.settings.UserSettings
 import com.richard.retrohall.emulator.EmulatorSession
@@ -222,8 +223,9 @@ fun RetroHallApp() {
         emulatorSessionFactory = dependencies.emulatorSessionFactory,
         appBootstrapper = dependencies.appBootstrapper,
         userSettingsStore = dependencies.userSettingsStore,
-        saveStateRepository = dependencies.saveStateRepository,
-        cacheManager = dependencies.cacheManager,
+        saveStateStore = dependencies.saveStateStore,
+        cacheMaintenance = dependencies.cacheMaintenance,
+        coverImageLoader = dependencies.coverImageLoader,
     )
 }
 
@@ -234,8 +236,9 @@ private fun RetroHallAppContent(
     emulatorSessionFactory: EmulatorSessionFactory,
     appBootstrapper: AppBootstrapper,
     userSettingsStore: UserSettingsStore,
-    saveStateRepository: SaveStateRepository,
-    cacheManager: CacheManager,
+    saveStateStore: SaveStateStore,
+    cacheMaintenance: CacheMaintenance,
+    coverImageLoader: CoverImageLoader,
 ) {
     val scope = rememberCoroutineScope()
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Hall) }
@@ -286,6 +289,7 @@ private fun RetroHallAppContent(
                     recentGridState = recentGridState,
                     favoritesGridState = favoritesGridState,
                     coverReloadTick = coverReloadTick,
+                    coverImageLoader = coverImageLoader,
                     onRefreshCovers = {
                         val changed = gameRepository.refreshCovers()
                         if (changed) coverReloadTick++
@@ -306,9 +310,10 @@ private fun RetroHallAppContent(
                     DetailScreen(
                         game = latestGame,
                         message = launchMessage,
-                        saveStateRepository = saveStateRepository,
+                        saveStateStore = saveStateStore,
                         selectedSaveId = selectedSaveIds[latestGame.id],
                         coverReloadTick = coverReloadTick,
+                        coverImageLoader = coverImageLoader,
                         onOpenSaveManager = { route = AppRoute.SaveManager(latestGame) },
                         onSelectLibrary = { openHall("游戏库") },
                         onSelectRecent = { openHall("最近") },
@@ -324,7 +329,7 @@ private fun RetroHallAppContent(
                         },
                         onDelete = { includeSaves ->
                             scope.launch {
-                                if (includeSaves) saveStateRepository.deleteForGame(latestGame.id)
+                                if (includeSaves) saveStateStore.deleteForGame(latestGame.id)
                                 romDownloadManager.deleteLocal(latestGame)
                                 downloadVersion++
                             }
@@ -366,7 +371,7 @@ private fun RetroHallAppContent(
 
                 is AppRoute.SaveManager -> SaveManagerScreen(
                     game = current.game,
-                    saveStateRepository = saveStateRepository,
+                    saveStateStore = saveStateStore,
                     selectedSaveId = selectedSaveIds[current.game.id],
                     onSelectSave = { saveState ->
                         selectedSaveIds = selectedSaveIds + (current.game.id to saveState.id)
@@ -400,7 +405,7 @@ private fun RetroHallAppContent(
 
                 AppRoute.Settings -> SettingsScreen(
                     settings = settings,
-                    cacheManager = cacheManager,
+                    cacheMaintenance = cacheMaintenance,
                     onCacheCleared = { coverReloadTick++ },
                     onUpdateSettings = { next ->
                         scope.launch { userSettingsStore.update(next) }
@@ -655,6 +660,7 @@ private fun HallScreen(
     recentGridState: LazyGridState,
     favoritesGridState: LazyGridState,
     coverReloadTick: Long,
+    coverImageLoader: CoverImageLoader,
     onRefreshCovers: suspend () -> Unit,
     onSelectSection: (String) -> Unit,
     onOpenGame: (LocalGame) -> Unit,
@@ -871,6 +877,7 @@ private fun HallScreen(
                                 GameTile(
                                     game = game,
                                     coverReloadTick = coverReloadTick,
+                                    coverImageLoader = coverImageLoader,
                                     onClick = { onOpenGame(game) },
                                     onToggleFavorite = { onToggleFavorite(game) },
                                 )
@@ -1345,9 +1352,15 @@ private fun SearchBox(
 }
 
 @Composable
-private fun GameTile(game: LocalGame, coverReloadTick: Long, onClick: () -> Unit, onToggleFavorite: () -> Unit) {
+private fun GameTile(
+    game: LocalGame,
+    coverReloadTick: Long,
+    coverImageLoader: CoverImageLoader,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
+) {
     val palette = remember(game.id) { gamePalette(game) }
-    val coverState = rememberCoverBitmap(game, coverReloadTick).value
+    val coverState = rememberCoverBitmap(game, coverReloadTick, coverImageLoader).value
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -1452,9 +1465,10 @@ private fun gamePalette(game: LocalGame): Pair<Color, Color> {
 private fun DetailScreen(
     game: LocalGame,
     message: String?,
-    saveStateRepository: SaveStateRepository,
+    saveStateStore: SaveStateStore,
     selectedSaveId: String?,
     coverReloadTick: Long,
+    coverImageLoader: CoverImageLoader,
     onOpenSaveManager: () -> Unit,
     onSelectLibrary: () -> Unit,
     onSelectRecent: () -> Unit,
@@ -1471,7 +1485,7 @@ private fun DetailScreen(
     var showDeleteDialog by remember(game.id) { mutableStateOf(false) }
     var busy by remember(game.id) { mutableStateOf(false) }
     var screenshotViewerIndex by remember(game.id) { mutableStateOf(-1) }
-    val saveStates by saveStateRepository.observeForGame(game.id).collectAsState(initial = emptyList())
+    val saveStates by saveStateStore.observeForGame(game.id).collectAsState(initial = emptyList())
     val selectedSaveState = saveStates.firstOrNull { it.id == selectedSaveId } ?: saveStates.firstOrNull()
     val selectedSaveName = selectedSaveState?.displayName() ?: "新存档"
 
@@ -1510,7 +1524,13 @@ private fun DetailScreen(
                             .border(3.dp, UiCyan, RoundedCornerShape(18.dp))
                             .clip(RoundedCornerShape(18.dp)),
                     ) {
-                        CoverArt(game = game, focused = false, coverReloadTick = coverReloadTick, modifier = Modifier.fillMaxSize())
+                        CoverArt(
+                            game = game,
+                            focused = false,
+                            coverReloadTick = coverReloadTick,
+                            coverImageLoader = coverImageLoader,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Column(modifier = Modifier.fillMaxWidth()) {
@@ -1577,6 +1597,7 @@ private fun DetailScreen(
                         descSize = descSize,
                         descLineHeight = descLineHeight,
                         coverReloadTick = coverReloadTick,
+                        coverImageLoader = coverImageLoader,
                         halfWidth = lowerHalfWidth,
                         onOpenScreenshot = { screenshotViewerIndex = it },
                     )
@@ -1593,6 +1614,7 @@ private fun DetailScreen(
             urls = viewerUrls,
             index = screenshotViewerIndex,
             onIndexChange = { screenshotViewerIndex = it },
+            coverImageLoader = coverImageLoader,
             onDismiss = { screenshotViewerIndex = -1 },
         )
     }
@@ -1632,6 +1654,7 @@ private fun DetailLowerSection(
     descSize: TextUnit,
     descLineHeight: TextUnit,
     coverReloadTick: Long,
+    coverImageLoader: CoverImageLoader,
     halfWidth: Dp,
     onOpenScreenshot: (Int) -> Unit,
 ) {
@@ -1674,6 +1697,7 @@ private fun DetailLowerSection(
                     index = index,
                     dense = dense,
                     coverReloadTick = coverReloadTick,
+                    coverImageLoader = coverImageLoader,
                     onClick = { onOpenScreenshot(index) },
                 )
             }
@@ -1717,10 +1741,9 @@ private fun ScreenshotCard(
     index: Int,
     dense: Boolean,
     coverReloadTick: Long,
+    coverImageLoader: CoverImageLoader,
     onClick: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val downloader = remember { RetroHallDependencies.get(context).coverDownloader }
     val bitmap by produceState<ImageBitmap?>(initialValue = null, url, coverReloadTick) {
         value = if (url.isBlank()) {
             null
@@ -1730,7 +1753,7 @@ private fun ScreenshotCard(
                 if (file.exists()) BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap() else null
             }.getOrNull()
         } else {
-            val localPath = downloader.prepareCover("shot-${index}-${url.hashCode().toUInt()}", url)
+            val localPath = coverImageLoader.prepareCover("shot-${index}-${url.hashCode().toUInt()}", url)
             if (localPath != url) {
                 runCatching {
                     val file = File(localPath)
@@ -1795,14 +1818,13 @@ private fun ScreenshotViewer(
     urls: List<String>,
     index: Int,
     onIndexChange: (Int) -> Unit,
+    coverImageLoader: CoverImageLoader,
     onDismiss: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val downloader = remember { RetroHallDependencies.get(context).coverDownloader }
     val url = urls.getOrNull(index) ?: run { onDismiss(); return }
     val bitmap by produceState<ImageBitmap?>(initialValue = null, url, index) {
         value = runCatching {
-            val localPath = downloader.prepareCover("viewer-$index-${url.hashCode().toUInt()}", url)
+            val localPath = coverImageLoader.prepareCover("viewer-$index-${url.hashCode().toUInt()}", url)
             if (localPath != url) {
                 val file = File(localPath)
                 if (file.exists()) BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap() else null
@@ -1906,9 +1928,9 @@ private fun formatFileSize(bytes: Long): String {
 @Composable
 private fun SaveManagerScreen(
     game: LocalGame,
-    saveStateRepository: SaveStateRepository,
+    saveStateStore: SaveStateStore,
     selectedSaveId: String?,
-    onSelectSave: (SaveStateEntity) -> Unit,
+    onSelectSave: (SaveStateSlot) -> Unit,
     onBackToDetail: () -> Unit,
     onSelectLibrary: () -> Unit,
     onSelectRecent: () -> Unit,
@@ -1916,7 +1938,7 @@ private fun SaveManagerScreen(
     onOpenSettings: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val saveStates by saveStateRepository.observeForGame(game.id).collectAsState(initial = emptyList())
+    val saveStates by saveStateStore.observeForGame(game.id).collectAsState(initial = emptyList())
 
     AppShell(
         selectedNav = "",
@@ -1937,7 +1959,7 @@ private fun SaveManagerScreen(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HallActionButton("新增槽位", focused = true, compact = true) {
-                        scope.launch { saveStateRepository.addSlot(game.id) }
+                        scope.launch { saveStateStore.addSlot(game.id) }
                     }
                     HallActionButton("返回详情", focused = false, compact = true, onClick = onBackToDetail)
                 }
@@ -1956,8 +1978,8 @@ private fun SaveManagerScreen(
                             saveState = saveState,
                             selected = saveState.id == selectedSaveId,
                             onSelect = { onSelectSave(saveState) },
-                            onCopy = { scope.launch { saveStateRepository.copy(saveState) } },
-                            onDelete = { scope.launch { saveStateRepository.delete(saveState) } },
+                            onCopy = { scope.launch { saveStateStore.copy(saveState.id) } },
+                            onDelete = { scope.launch { saveStateStore.delete(saveState.id) } },
                         )
                     }
                 }
@@ -1968,7 +1990,7 @@ private fun SaveManagerScreen(
 
 @Composable
 private fun SaveStateRow(
-    saveState: SaveStateEntity,
+    saveState: SaveStateSlot,
     selected: Boolean,
     onSelect: () -> Unit,
     onCopy: () -> Unit,
@@ -2011,7 +2033,7 @@ private fun SaveStateRow(
     }
 }
 
-private fun SaveStateEntity.displayName(): String {
+private fun SaveStateSlot.displayName(): String {
     return when (slotType) {
         "auto" -> "自动存档"
         else -> "手动槽 ${slotIndex ?: 1}"
@@ -2024,9 +2046,15 @@ private fun formatTimestamp(timestamp: Long?): String {
 }
 
 @Composable
-private fun CoverArt(game: LocalGame, focused: Boolean, coverReloadTick: Long, modifier: Modifier = Modifier) {
+private fun CoverArt(
+    game: LocalGame,
+    focused: Boolean,
+    coverReloadTick: Long,
+    coverImageLoader: CoverImageLoader,
+    modifier: Modifier = Modifier,
+) {
     val palette = remember(game.id) { gamePalette(game) }
-    val coverState = rememberCoverBitmap(game, coverReloadTick).value
+    val coverState = rememberCoverBitmap(game, coverReloadTick, coverImageLoader).value
     Box(
         modifier = modifier
             .background(Color(0xFF15262B), RoundedCornerShape(14.dp))
@@ -2076,17 +2104,15 @@ private sealed interface CoverState {
 }
 
 @Composable
-private fun rememberCoverBitmap(game: LocalGame, reloadTick: Long): State<CoverState> {
-    val context = LocalContext.current
-    val downloader = remember { RetroHallDependencies.get(context).coverDownloader }
+private fun rememberCoverBitmap(game: LocalGame, reloadTick: Long, coverImageLoader: CoverImageLoader): State<CoverState> {
     val path = game.coverPath
     return produceState<CoverState>(initialValue = CoverState.Loading, path, reloadTick) {
-        value = decodeCoverState(path, downloader, game.id)
+        value = decodeCoverState(path, coverImageLoader, game.id)
     }
 }
 
 /** 根据封面路径解码为加载状态。 */
-private suspend fun decodeCoverState(path: String, downloader: CoverDownloader, gameId: String): CoverState {
+private suspend fun decodeCoverState(path: String, coverImageLoader: CoverImageLoader, gameId: String): CoverState {
     if (path.isBlank()) return CoverState.Empty
     return if (!path.startsWith("http://", ignoreCase = true) && !path.startsWith("https://", ignoreCase = true)) {
         val file = File(path)
@@ -2097,7 +2123,7 @@ private suspend fun decodeCoverState(path: String, downloader: CoverDownloader, 
             CoverState.Empty
         }
     } else {
-        val localPath = downloader.prepareCover(gameId, path)
+        val localPath = coverImageLoader.prepareCover(gameId, path)
         if (localPath != path) {
             val file = File(localPath)
             if (file.exists()) {
@@ -2365,7 +2391,7 @@ private fun GameScreen(
                         title = game.title,
                         state = session.state,
                         frame = frame,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().testTag("game_frame"),
                     )
                     if (paused) {
                         PauseWatermark()
@@ -2483,26 +2509,28 @@ private fun GameScreen(
 
 @Composable
 private fun GameFrame(title: String, state: EmulatorState, frame: Bitmap?, modifier: Modifier = Modifier) {
-    if (frame != null) {
-        Image(
-            bitmap = frame.asImageBitmap(),
-            contentDescription = "游戏画面",
-            contentScale = ContentScale.FillBounds,
-            filterQuality = FilterQuality.None,
-            modifier = modifier,
-        )
-    } else {
-        Column(
-            modifier = modifier.padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
-        ) {
-            Text(
-                title, color = UiText.copy(alpha = 0.92f), fontSize = 30.sp,
-                fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
+    Box(modifier = modifier.testTag("game_frame")) {
+        if (frame != null) {
+            Image(
+                bitmap = frame.asImageBitmap(),
+                contentDescription = "游戏画面",
+                contentScale = ContentScale.FillBounds,
+                filterQuality = FilterQuality.None,
+                modifier = Modifier.fillMaxSize(),
             )
-            Text(stateLabel(state), color = UiCyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        } else {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
+            ) {
+                Text(
+                    title, color = UiText.copy(alpha = 0.92f), fontSize = 30.sp,
+                    fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                )
+                Text(stateLabel(state), color = UiCyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -3018,7 +3046,7 @@ private fun GamePanelButton(text: String, primary: Boolean = false, danger: Bool
 @Composable
 private fun SettingsScreen(
     settings: UserSettings,
-    cacheManager: CacheManager,
+    cacheMaintenance: CacheMaintenance,
     onCacheCleared: () -> Unit,
     onUpdateSettings: (UserSettings) -> Unit,
     onSelectLibrary: () -> Unit,
@@ -3042,7 +3070,7 @@ private fun SettingsScreen(
             item { SettingsAudioSection(settings, onUpdateSettings, Modifier.fillMaxWidth(), dense = false) }
             item { SettingsControlSection(settings, onUpdateSettings, Modifier.fillMaxWidth(), dense = false) }
             item { SettingsGameSection(settings, onUpdateSettings, Modifier.fillMaxWidth(), dense = false) }
-            item { SettingsSystemSection(cacheManager, onCacheCleared, Modifier.fillMaxWidth(), dense = false) }
+            item { SettingsSystemSection(cacheMaintenance, onCacheCleared, Modifier.fillMaxWidth(), dense = false) }
         }
     }
 }
@@ -3148,7 +3176,7 @@ private fun SettingsGameSection(
 
 @Composable
 private fun SettingsSystemSection(
-    cacheManager: CacheManager,
+    cacheMaintenance: CacheMaintenance,
     onCacheCleared: () -> Unit,
     modifier: Modifier = Modifier,
     dense: Boolean = false,
@@ -3160,8 +3188,8 @@ private fun SettingsSystemSection(
             var showClearConfirm by remember { mutableStateOf(false) }
             val scope = rememberCoroutineScope()
 
-            LaunchedEffect(cacheManager) {
-                cacheSize = cacheManager.totalSize()
+            LaunchedEffect(cacheMaintenance) {
+                cacheSize = cacheMaintenance.totalSize()
             }
 
             Row(
@@ -3169,7 +3197,7 @@ private fun SettingsSystemSection(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    if (clearing) "清理中..." else CacheManager.formatBytes(cacheSize),
+                    if (clearing) "清理中..." else cacheMaintenance.formatBytes(cacheSize),
                     color = if (clearing) UiMuted else UiText,
                     fontSize = if (dense) 14.sp else 15.sp,
                     fontWeight = FontWeight.Black,
@@ -3202,8 +3230,8 @@ private fun SettingsSystemSection(
                         showClearConfirm = false
                         clearing = true
                         scope.launch {
-                            cacheManager.clear()
-                            cacheSize = cacheManager.totalSize()
+                            cacheMaintenance.clear()
+                            cacheSize = cacheMaintenance.totalSize()
                             clearing = false
                             onCacheCleared()
                         }

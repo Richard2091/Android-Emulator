@@ -4,7 +4,8 @@
 
 安装 Debug APK 到 Android 手机、Android TV 或模拟器。
 
-如果没有真实 NES core 和 ROM，可以使用 `FakeEmulatorSession` 验证非模拟器流程，但这不算第一版最终验收。
+如果没有真实 NES core 和 ROM，可以使用 `FakeEmulatorSession` 验证非模拟器流程，但这不算真实 core 路径验收。
+手工 QA 只补自动化无法稳定覆盖的屏幕外观、音频听感和遥控器/手柄体验。
 
 ## 大厅流程
 

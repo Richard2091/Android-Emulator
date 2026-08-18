@@ -1,6 +1,7 @@
 package com.richard.retrohall.data.cache
 
 import android.content.Context
+import com.richard.retrohall.domain.settings.CacheMaintenance
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -12,7 +13,7 @@ import java.util.Locale
  * 清理时只删除可再生的元数据缓存：远程封面、Hasheous 查询缓存与系统临时缓存。
  * 已下载的 ROM（rom-cache）、存档（saves）以及打包私有资源（roms/covers/cores）一律保留。
  */
-class CacheManager(private val context: Context) {
+class CacheManager(private val context: Context) : CacheMaintenance {
     private val filesRoot get() = context.applicationContext.filesDir
     private val cacheRoot get() = context.applicationContext.cacheDir
 
@@ -21,15 +22,17 @@ class CacheManager(private val context: Context) {
         cacheRoot,
     )
 
-    suspend fun totalSize(): Long = withContext(Dispatchers.IO) {
+    override suspend fun totalSize(): Long = withContext(Dispatchers.IO) {
         cacheTargets().sumOf { it.dirSize() }
     }
 
-    suspend fun clear() = withContext(Dispatchers.IO) {
-        // 删除封面与元数据缓存目录本身。
-        File(filesRoot, "metadata-cache").deleteRecursively()
-        // 系统缓存目录只清空内容，保留目录本身。
-        cacheRoot.listFiles()?.forEach { it.deleteRecursively() }
+    override suspend fun clear() {
+        withContext(Dispatchers.IO) {
+            // 删除封面与元数据缓存目录本身。
+            File(filesRoot, "metadata-cache").deleteRecursively()
+            // 系统缓存目录只清空内容，保留目录本身。
+            cacheRoot.listFiles()?.forEach { it.deleteRecursively() }
+        }
     }
 
     private fun File.dirSize(): Long {
@@ -49,4 +52,6 @@ class CacheManager(private val context: Context) {
             return String.format(Locale.US, "%.1f %s", value, units[exp])
         }
     }
+
+    override fun formatBytes(bytes: Long): String = CacheManager.formatBytes(bytes)
 }

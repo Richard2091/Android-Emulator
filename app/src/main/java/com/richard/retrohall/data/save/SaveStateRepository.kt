@@ -3,20 +3,25 @@ package com.richard.retrohall.data.save
 import android.content.Context
 import com.richard.retrohall.data.db.SaveStateDao
 import com.richard.retrohall.data.db.SaveStateEntity
+import com.richard.retrohall.domain.save.SaveStateSlot
+import com.richard.retrohall.domain.save.SaveStateStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 
 class SaveStateRepository(
     context: Context,
     private val saveStateDao: SaveStateDao,
-) {
+) : SaveStateStore {
     private val filesRoot = context.applicationContext.filesDir
 
-    fun observeForGame(gameId: String): Flow<List<SaveStateEntity>> = saveStateDao.observeForGame(gameId)
+    override fun observeForGame(gameId: String): Flow<List<SaveStateSlot>> {
+        return saveStateDao.observeForGame(gameId).map { slots -> slots.map { it.toSlot() } }
+    }
 
-    suspend fun addSlot(gameId: String): SaveStateEntity = withContext(Dispatchers.IO) {
+    override suspend fun addSlot(gameId: String): SaveStateSlot = withContext(Dispatchers.IO) {
         val nextIndex = nextManualIndex(gameId)
         val now = System.currentTimeMillis()
         val entity = SaveStateEntity(
@@ -29,20 +34,24 @@ class SaveStateRepository(
             updatedAt = now,
         )
         saveStateDao.upsert(entity)
-        entity
+        entity.toSlot()
     }
 
-    suspend fun delete(saveState: SaveStateEntity) = withContext(Dispatchers.IO) {
-        File(saveState.filePath).takeIf { it.exists() }?.delete()
-        saveStateDao.deleteById(saveState.id)
+    override suspend fun delete(slotId: String) = withContext(Dispatchers.IO) {
+        val saveState = saveStateDao.getById(slotId)
+        if (saveState != null) {
+            File(saveState.filePath).takeIf { it.exists() }?.delete()
+        }
+        saveStateDao.deleteById(slotId)
     }
 
-    suspend fun deleteForGame(gameId: String) = withContext(Dispatchers.IO) {
+    override suspend fun deleteForGame(gameId: String) = withContext(Dispatchers.IO) {
         File(filesRoot, "saves/states/$gameId").deleteRecursively()
         saveStateDao.deleteByGameId(gameId)
     }
 
-    suspend fun copy(saveState: SaveStateEntity): SaveStateEntity = withContext(Dispatchers.IO) {
+    override suspend fun copy(slotId: String): SaveStateSlot? = withContext(Dispatchers.IO) {
+        val saveState = saveStateDao.getById(slotId) ?: return@withContext null
         val nextIndex = nextManualIndex(saveState.gameId)
         val now = System.currentTimeMillis()
         val target = stateFile(saveState.gameId, nextIndex)
@@ -61,7 +70,7 @@ class SaveStateRepository(
             updatedAt = now,
         )
         saveStateDao.upsert(entity)
-        entity
+        entity.toSlot()
     }
 
     private suspend fun nextManualIndex(gameId: String): Int {
@@ -74,4 +83,13 @@ class SaveStateRepository(
     }
 
     private fun saveId(gameId: String, index: Int): String = "$gameId-manual-$index"
+
+    private fun SaveStateEntity.toSlot(): SaveStateSlot {
+        return SaveStateSlot(
+            id = id,
+            slotType = slotType,
+            slotIndex = slotIndex,
+            updatedAt = updatedAt,
+        )
+    }
 }

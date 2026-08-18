@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Retro Hall GitHub Pages catalog files."""
+"""Generate Retro Hall static catalog files."""
 
 from __future__ import annotations
 

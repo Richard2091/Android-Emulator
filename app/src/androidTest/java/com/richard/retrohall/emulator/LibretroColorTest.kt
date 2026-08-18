@@ -29,8 +29,8 @@ class LibretroColorTest {
         assertTrue("loadCore", host.loadCore(core.absolutePath))
         assertTrue("loadGame", host.loadGame(rom.absolutePath))
 
-        // 跑 180 帧覆盖标题画面进入游戏
-        repeat(180) { host.runFrame() }
+        // 跑若干帧覆盖标题画面进入游戏，随后直接做确定性断言。
+        repeat(180) { assertTrue("runFrame", host.runFrame()) }
 
         val info = host.getFrameInfo()
         requireNotNull(info) { "frame not ready" }
@@ -71,17 +71,16 @@ class LibretroColorTest {
         Log.i("RetroHallColor", "blue=$bluePx(${bluePx * 100 / count}%) green=$greenPx(${greenPx * 100 / count}%) red=$redPx(${redPx * 100 / count}%) bright=$brightPx(${brightPx * 100 / count}%)")
         Log.i("RetroHallColor", "top colors: ${colorCount.entries.sortedByDescending { it.value }.take(10)}")
 
+        assertTrue("pixel count", count > 0)
+        assertTrue("color variety", colorCount.size > 8)
+        assertTrue("non-empty frame", brightPx > 0)
+
         // 保存 PNG 到应用私有目录供查看
         val bmp = Bitmap.createBitmap(info.width, info.height, Bitmap.Config.ARGB_8888)
         bmp.copyPixelsFromBuffer(ByteBuffer.wrap(buffer, 0, written))
         val out = File(context.filesDir, "frame.png")
         out.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         Log.i("RetroHallColor", "saved frame to ${out.absolutePath} size=${out.length()}")
-
-        // 写标志文件，供外部 pull 帧文件
-        File(context.filesDir, "frame-ready").writeText("done")
-        Log.i("RetroHallColor", "frame-ready marker written, keeping alive 30s")
-        Thread.sleep(30_000)
 
         host.unloadCore()
     }

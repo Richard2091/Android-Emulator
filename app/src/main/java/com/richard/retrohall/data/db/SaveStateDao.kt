@@ -14,6 +14,9 @@ interface SaveStateDao {
     @Query("SELECT * FROM save_states WHERE gameId = :gameId ORDER BY updatedAt DESC")
     fun observeForGame(gameId: String): Flow<List<SaveStateEntity>>
 
+    @Query("SELECT * FROM save_states WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): SaveStateEntity?
+
     @Query("DELETE FROM save_states WHERE id = :id")
     suspend fun deleteById(id: String)
 

@@ -27,8 +27,8 @@
 - 无本地 ROM 导入口、无游戏源入口、无账号、无云同步。
 - 公开仓库不包含 ROM、私有 core、私有封面、存档或签名文件。
 
-## 当前未完成项
+## 当前状态
 
-- 尚未接入真实 libretro core。
-- 尚未通过真实 NES ROM 验收。
-- 尚未执行 connected Android 测试。
+- 真正的 libretro core 和私有 NES ROM 已完成本地冒烟验证。
+- connected Android 测试已纳入自动化验证链路。
+- 后续保持文档、测试和代码结构同步收口。

@@ -48,13 +48,13 @@ Debug APK 仅用于个人研究和本地验证。
 连接设备后：
 
 ```powershell
-adb install -r app\build\outputs\apk\debug\app-debug.apk
+adb install -r -d app\build\outputs\apk\debug\app-debug.apk
 ```
 
 启动应用：
 
 ```powershell
-adb shell monkey -p com.richard.retrohall 1
+adb shell am start -W -n com.richard.retrohall/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER
 ```
 
 查看日志：

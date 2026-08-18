@@ -1,6 +1,7 @@
 package com.richard.retrohall.data.game
 
 import android.content.Context
+import com.richard.retrohall.domain.game.CoverImageLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -14,7 +15,7 @@ import java.security.MessageDigest
  * 封面 URL 默认指向 raw.githubusercontent.com，单 IP 高频请求可能触发 429 且大陆连通性差；
  * 因此下载前会按 FcRomsSourceResolver 展开为 GitHub Pages / jsDelivr 等候选源逐一尝试。
  */
-class CoverDownloader(context: Context) {
+class CoverDownloader(context: Context) : CoverImageLoader {
     private val filesRoot = context.applicationContext.filesDir
     private val coverRoot = File(filesRoot, "metadata-cache/covers")
 
@@ -25,7 +26,7 @@ class CoverDownloader(context: Context) {
      * @param coverUrl 远程封面地址。
      * @return 本地缓存文件路径；下载失败时返回原始 URL。
      */
-    suspend fun prepareCover(gameId: String, coverUrl: String): String = withContext(Dispatchers.IO) {
+    override suspend fun prepareCover(gameId: String, coverUrl: String): String = withContext(Dispatchers.IO) {
         if (!coverUrl.startsWith("http://") && !coverUrl.startsWith("https://")) return@withContext coverUrl
         val target = cacheTarget(gameId, coverUrl)
         if (target.isFile && target.length() > 0L) return@withContext target.absolutePath

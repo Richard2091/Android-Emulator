@@ -59,6 +59,10 @@
 
 没有设备时，记录跳过原因，不把该项说成已通过。
 
+## Instrumented 测试契约
+
+`androidTest` 只承担确定性自动化断言，具体边界见 `docs/testing/instrumented-test-contract.md`。持续动画页面、真实 core 冒烟和无障碍树轮询优先于长睡眠和外部截图。
+
 ## Native 冒烟测试
 
 libretro 接入后至少验证：
