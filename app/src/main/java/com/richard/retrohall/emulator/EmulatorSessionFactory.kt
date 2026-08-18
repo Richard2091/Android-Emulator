@@ -18,7 +18,7 @@ class EmulatorSessionFactory(context: Context) {
             ?: return fakeSession(game, "没有检测到 ${game.platform} 的模拟器核心，已使用兼容演示模式。")
 
         val realSession = runCatching {
-            LibretroEmulatorSession(core.absolutePath, filesRoot.absolutePath).also { session ->
+            LibretroEmulatorSession(core.file.absolutePath, filesRoot.absolutePath).also { session ->
                 session.load(game)
                 session.start()
             }
@@ -33,7 +33,7 @@ class EmulatorSessionFactory(context: Context) {
 
         return EmulatorLaunchResult(
             session = realSession,
-            message = "已使用 libretro 核心启动游戏。",
+            message = "已使用 ${core.descriptor.displayName} 核心启动游戏。",
         )
     }
 

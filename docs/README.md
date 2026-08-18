@@ -1,10 +1,10 @@
 # Android Emulator Project Docs
 
-本文档目录用于让 Agent 从零完成 Android 复古游戏大厅的开发。阅读顺序很重要：先读项目边界，再读执行路线，最后按专项文档实现。
+本文档目录用于让 Agent 继续维护和收口 Android 复古游戏大厅。阅读顺序很重要：先读项目边界，再读执行路线，最后按专项文档实现。
 
 ## 当前项目状态
 
-当前仓库处于规划和文档阶段，尚未初始化 Android 工程。已有：
+当前仓库已经初始化 Android 工程，并进入结构收口和验收阶段。已有：
 
 - 需求说明：`docs/requirements.md`
 - 设计文档：`docs/design.md`
@@ -13,6 +13,7 @@
 - 技术专项文档：`docs/technical/`
 - UI 专项文档：`docs/ui/`
 - 测试和发布文档：`docs/testing/`、`docs/release/`
+- 实际代码：`app/`
 
 ## Agent 必读顺序
 
@@ -85,8 +86,8 @@ ROM 和资源边界：
 
 ## 执行原则
 
-- 先完成可编译 Android 工程，再做大厅和输入。
-- 先用 `FakeEmulatorSession` 打通流程，再接 libretro。
+- 先保证代码、文档、测试和目录结构一致。
+- 保留 `FakeEmulatorSession` 作为兜底，但真实核心路径不能再写成“未完成”。
 - 每完成一个任务，运行对应验证命令。
 - 不提交 ROM、私有资源、签名文件或带 ROM 的 APK。
 - 不添加第一版明确禁止的入口：本地 ROM 导入、游戏源、账号、云同步。

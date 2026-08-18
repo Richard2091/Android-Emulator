@@ -3,6 +3,7 @@ package com.richard.retrohall
 import android.content.Context
 import androidx.room.Room
 import com.richard.retrohall.data.cache.CacheManager
+import com.richard.retrohall.data.bootstrap.AppBootstrapper
 import com.richard.retrohall.data.db.RetroHallDatabase
 import com.richard.retrohall.data.assets.PrivateAssetInitializer
 import com.richard.retrohall.data.game.GitHubGameCatalogClient
@@ -40,6 +41,7 @@ class RetroHallDependencies private constructor(context: Context) {
     val userSettingsStore: UserSettingsStore = UserSettingsStore(appContext)
     val privateAssetInitializer: PrivateAssetInitializer = PrivateAssetInitializer(appContext, database.localGameDao())
     val cacheManager: CacheManager = CacheManager(appContext)
+    val appBootstrapper: AppBootstrapper = AppBootstrapper(privateAssetInitializer, gameRepository)
 
     companion object {
         @Volatile

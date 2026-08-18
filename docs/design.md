@@ -2,7 +2,9 @@
 
 ## 1. 设计目标
 
-本设计文档描述 Android 复古游戏大厅第一版的落地架构。
+本设计文档描述 Android 复古游戏大厅第一版的目标架构和当前收口方向。
+
+当前仓库已经初始化 Android 工程，`app` 模块、Compose UI、Room、DataStore、JNI/CMake、测试和 libretro 宿主都已存在；文档中的部分分包仍是目标态，需要继续向代码收敛。
 
 第一版目标：
 
@@ -22,38 +24,38 @@
 
 ## 2. 工程结构
 
-第一版采用单 module Android 工程，通过 package 分层维护边界。
+第一版采用单 module Android 工程，通过 package 分层维护边界。当前实现里 UI 入口仍偏集中，后续应继续拆分为更细的文件级结构。
 
 ```text
 app/
-├─ ui/
-│  ├─ hall/
-│  ├─ detail/
+├─ MainActivity.kt
+├─ RetroHallDependencies.kt
+├─ data/
+│  ├─ assets/
+│  ├─ bootstrap/
+│  ├─ cache/
+│  ├─ db/
 │  ├─ game/
-│  ├─ pause/
-│  ├─ settings/
-│  └─ components/
+│  ├─ save/
+│  └─ settings/
 ├─ domain/
 │  ├─ game/
 │  ├─ input/
 │  ├─ save/
-│  ├─ settings/
-│  └─ emulator/
-├─ data/
-│  ├─ db/
-│  ├─ assets/
-│  ├─ files/
 │  └─ settings/
 ├─ emulator/
-│  ├─ LibretroHost.kt
+│  ├─ CoreDescriptor.kt
+│  ├─ CorePathResolver.kt
 │  ├─ EmulatorSession.kt
-│  ├─ jni/
-│  └─ core/
-└─ input/
-   ├─ KeyEventMapper.kt
-   ├─ TouchInputMapper.kt
-   ├─ GamepadMapper.kt
-   └─ RemoteMapper.kt
+│  ├─ EmulatorSessionFactory.kt
+│  ├─ EmulatorState.kt
+│  ├─ FakeEmulatorSession.kt
+│  ├─ LibretroEmulatorSession.kt
+│  └─ LibretroHost.kt
+├─ input/
+│  └─ KeyEventMapper.kt
+├─ ui/
+│  └─ RetroHallApp.kt
 ```
 
 依赖方向：

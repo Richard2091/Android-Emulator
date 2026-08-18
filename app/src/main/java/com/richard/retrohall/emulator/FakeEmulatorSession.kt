@@ -1,8 +1,11 @@
 package com.richard.retrohall.emulator
 
+import android.graphics.Bitmap
 import com.richard.retrohall.domain.game.LocalGame
 import com.richard.retrohall.domain.input.GameAction
 import com.richard.retrohall.domain.save.SaveSlot
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 class FakeEmulatorSession : EmulatorSession {
     private var loadedGame: LocalGame? = null
@@ -12,6 +15,8 @@ class FakeEmulatorSession : EmulatorSession {
 
     override var lastInput: GameAction? = null
         private set
+
+    override val frames: StateFlow<Bitmap?> = MutableStateFlow(null)
 
     override fun load(game: LocalGame) {
         loadedGame = game

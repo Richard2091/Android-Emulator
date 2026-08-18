@@ -7,6 +7,48 @@
 
 本方案只涉及渲染/输出/核心相关改动，不改变大厅、存档、设置的数据结构。
 
+## 1.1 实施状态（2026-08 已验证）
+
+| 能力 | 状态 | 实证 |
+| --- | --- | --- |
+| FCEUmm 核心加载 | ✅ | `LibretroCoreInstrumentedTest`：dlopen + loadGame 成功 |
+| 魂斗罗 ROM 运行 | ✅ | 同上，180/180 帧运行成功，帧非黑 |
+| 视频帧渲染到屏幕 | ✅ | 截图实证：中央区域蓝(25%)/绿(4%)/红棕(10%)，两帧 56% 像素变化（游戏动态运行） |
+| 音频输出 | ✅ | 核心链路测试 drainAudio 输出 16384 bytes |
+| UI 全流程（搜索→详情→开始→核心启动） | ✅ | `GameplayFlowTest` 单跑通过，核心加载日志实证 |
+| 游戏速度设置（0.5x~2x） | ✅ | 设置面板 + AudioTrack.setPlaybackRate |
+| 私有游戏直接"开始" | ✅ | 修复 `RomDownloadManager.isDownloaded` 识别本地注入 ROM |
+
+实测环境：Pixel 6 API 35 模拟器（x86_64）、FCEUmm nightly core、魂斗罗(J)。
+
+## 1.2 游玩界面按钮验证（2026-08 二次验证）
+
+| 按钮 | 验证方式 | 结果 |
+| --- | --- | --- |
+| 方向键（上下左右） | native 输入日志 | ✅ 四向均触发 |
+| A / B / X / Y | native 输入日志（X→NesA, Y→NesB） | ✅ |
+| 开始 / 选择 | native 输入日志 + 暂停/恢复画面实证 | ✅ 修复瞬时按键未被采样的问题 |
+| 暂停 / 继续 | 帧发布停止/恢复 | ✅ |
+| 设置 | 面板渲染日志 + 截图 | ✅ |
+| 继续游戏 | 帧恢复 + 面板关闭 | ✅ |
+| 保存即时存档 | 存档文件生成 | ✅ |
+| 读取即时存档 | 读档后正常运行 | ✅ |
+| 重置游戏 | 修复后帧恢复 | ✅ 修复 reset 未恢复帧循环的 bug |
+| 游戏速度 0.5x~2x | 帧发布频率变化 | ✅ |
+| 退出游戏 | 帧停止 + 回详情页 | ✅ |
+
+修复项：
+- 瞬时按键（开始/选择）改为保持按下 120ms（`tapKey`），否则帧循环采样不到按下状态。
+- `LibretroEmulatorSession.reset()` 补充 `running=true` 与帧循环/音频循环重启，修复暂停后重置游戏卡死。
+- 像素格式转换统一输出 `R,G,B,A` 字节序（`Bitmap.copyPixelsFromBuffer` 对 ARGB_8888 期望的字节序）：
+  - RGB565 按标准布局 `bit11-15=R, bit5-10=G, bit0-4=B` 转换（此前 R/B 位提取写反导致人物肤色显示为蓝色）。
+  - 0RGB1555 按标准布局 `bit14-10=R, bit9-5=G, bit4-0=B` 转换。
+  - XRGB8888 从 core 的 `B,G,R,X`（小端）重排为 `R,G,B,A`（此前直接 memcpy 保持 B,G,R 会再被 Bitmap 按 R,G,B 读取导致 R/B 交换）。
+
+颜色链路验证（`LibretroColorTest` + `BitmapByteOrderTest`）：
+- `Bitmap.copyPixelsFromBuffer` 对 ARGB_8888 期望 R,G,B,A 字节序（已实测确认）。
+- 修复前：魂斗罗标题画面红色元素（KONAMI 标志/角色皮肤）显示为蓝色；修复后红/黄/白系正常。
+
 ## 2. 核心选型
 
 | 决策 | 结论 | 理由 |

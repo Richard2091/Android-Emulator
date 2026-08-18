@@ -1,6 +1,7 @@
 package com.richard.retrohall.data.assets
 
 import android.content.Context
+import android.util.Log
 import com.richard.retrohall.data.db.LocalGameDao
 import com.richard.retrohall.data.db.toEntity
 import com.richard.retrohall.domain.game.LocalGame
@@ -33,7 +34,10 @@ class PrivateAssetInitializer(
         // 尝试读取 manifest；缺失时让公开构建继续使用假数据。
         val manifestText = runCatching {
             assetManager.open(manifestPath).bufferedReader(Charsets.UTF_8).use { it.readText() }
-        }.getOrNull() ?: return PrivateAssetResult.MissingManifest
+        }.getOrNull() ?: run {
+            Log.w("RetroHallAssets", "未找到私有 manifest，跳过私有资源注入")
+            return PrivateAssetResult.MissingManifest
+        }
 
         val manifest = PrivateAssetManifest.parse(manifestText)
         val filesRoot = context.filesDir
@@ -67,6 +71,7 @@ class PrivateAssetInitializer(
         }
 
         localGameDao.upsertAll(games)
+        Log.i("RetroHallAssets", "私有资源初始化完成，游戏数=${games.size}")
         return PrivateAssetResult.Initialized(games.size)
     }
 
@@ -79,6 +84,8 @@ class PrivateAssetInitializer(
                     input.copyTo(output)
                 }
             }
+        }.onFailure { error ->
+            Log.w("RetroHallAssets", "复制资源失败：$assetPath -> ${target.absolutePath}", error)
         }
     }
 }

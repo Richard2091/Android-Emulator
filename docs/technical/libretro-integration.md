@@ -19,9 +19,9 @@ interface EmulatorSession {
     fun reset()
     fun stop()
     fun sendInput(action: GameAction, pressed: Boolean)
-    fun saveSram()
-    fun saveState(slot: SaveSlot)
-    fun loadState(slot: SaveSlot)
+    fun saveSram(): Boolean
+    fun saveState(slot: SaveSlot): Boolean
+    fun loadState(slot: SaveSlot): Boolean
 }
 ```
 
@@ -70,14 +70,26 @@ Kotlin 门面：
 app/src/main/java/com/richard/retrohall/emulator/LibretroHost.kt
 ```
 
+当前实现还包括：
+
+- `app/src/main/java/com/richard/retrohall/emulator/CoreDescriptor.kt`
+- `app/src/main/java/com/richard/retrohall/emulator/CorePathResolver.kt`
+- `app/src/main/java/com/richard/retrohall/emulator/EmulatorSessionFactory.kt`
+- `app/src/main/java/com/richard/retrohall/emulator/FakeEmulatorSession.kt`
+- `app/src/main/java/com/richard/retrohall/emulator/LibretroEmulatorSession.kt`
+
 ## NES core 选择
 
-第一版默认候选 core：
+第一版已采用并实机验证：
 
 - 名称：FCEUmm libretro Android core
 - 用途：FC / NES 模拟
-- ABI 优先级：`arm64-v8a`，后续补 `armeabi-v7a`、`x86_64`
-- 许可证：实现前必须记录所下载 core 的实际许可证文本和来源链接
+- 来源：libretro buildbot nightly，`https://buildbot.libretro.com/nightly/android/latest/{abi}/fceumm_libretro_android.so.zip`
+- ABI：arm64-v8a、armeabi-v7a、x86、x86_64 均已下载验证（x86_64 在模拟器实机跑通魂斗罗）
+- 许可证：GPL-2.0（libretro 分支），分发前需核对 buildbot commit 的许可证文本
+- 备选回退：Mesen（`mesen_libretro_android.so`，GPL-3.0）
+
+`libretro.h` 使用 `app/src/main/cpp/libretro.h`（官方头），对应 `RETRO_API_VERSION`。
 
 如果 Agent 改用其他 NES core，必须先更新本文档，写明：
 
@@ -224,6 +236,8 @@ libretro input callback 查询当前状态，并映射到 NES joypad：
 - 可显示当前状态和最近输入。
 
 这样可以让大厅、输入、暂停菜单、设置、存档 UI 先完成。
+
+当前仓库已经把这条降级链路和真实核心链路同时保留在代码里，`FakeEmulatorSession` 是兜底，不是唯一实现。
 
 ## 错误处理
 

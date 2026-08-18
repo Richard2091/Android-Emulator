@@ -12,9 +12,16 @@ data class LocalGame(
     val category: String,
     val coverPath: String,
     val romPath: String,
-    val favorite: Boolean,
-    val lastPlayedAt: Long?,
-    val totalPlayTimeMillis: Long,
+    val favorite: Boolean = false,
+    val lastPlayedAt: Long? = null,
+    val totalPlayTimeMillis: Long = 0L,
+    val description: String = "",
+    val romMd5: String = "",
+    val romSha1: String = "",
+    val romCrc32: String = "",
+    val hotness: Double? = null,
+    val screenshots: List<String> = emptyList(),
+    val logos: List<String> = emptyList(),
 )
 ```
 
@@ -32,8 +39,13 @@ data class LocalGameEntity(
     val favorite: Boolean,
     val lastPlayedAt: Long?,
     val totalPlayTimeMillis: Long,
-    val createdAt: Long,
-    val updatedAt: Long,
+    val description: String = "",
+    val romMd5: String = "",
+    val romSha1: String = "",
+    val romCrc32: String = "",
+    val hotness: Double? = null,
+    val screenshots: List<String> = emptyList(),
+    val logos: List<String> = emptyList(),
 )
 ```
 
@@ -71,12 +83,13 @@ Room Entity：
 ```kotlin
 @Entity(
     tableName = "save_states",
-    primaryKeys = ["gameId", "slotType", "slotIndex"]
+    primaryKeys = ["id"]
 )
 data class SaveStateEntity(
+    @PrimaryKey val id: String,
     val gameId: String,
     val slotType: String,
-    val slotIndex: Int,
+    val slotIndex: Int?,
     val filePath: String,
     val createdAt: Long,
     val updatedAt: Long,
@@ -85,8 +98,8 @@ data class SaveStateEntity(
 
 槽位规则：
 
-- `slotType = "auto"` 时 `slotIndex = 0`
 - `slotType = "manual"` 时 `slotIndex` 只能是 1、2、3
+- 当前实现主要使用手动槽位；自动槽位后续如落地，需补充文档和迁移规则
 
 ## UserSettings
 
@@ -94,42 +107,34 @@ data class SaveStateEntity(
 
 ```kotlin
 data class UserSettings(
-    val aspectRatio: AspectRatioMode = AspectRatioMode.Original,
+    val aspectRatio: AspectRatio = AspectRatio.Original,
     val filterEnabled: Boolean = false,
     val audioEnabled: Boolean = true,
-    val volume: Float = 1.0f,
+    val volume: Float = 0.8f,
     val virtualPadVisible: Boolean = true,
-    val virtualPadOpacity: Float = 0.55f,
+    val virtualPadOpacity: Float = 0.7f,
     val virtualPadScale: Float = 1.0f,
     val virtualPadLayout: VirtualPadLayout = VirtualPadLayout.Default,
+    val controlMode: ControlMode = ControlMode.VirtualPad,
     val hideVirtualPadWhenGamepadConnected: Boolean = true,
     val autoSaveStateEnabled: Boolean = true,
+    val gameSpeed: Float = 1f,
 )
 
-enum class AspectRatioMode {
+enum class AspectRatio {
     Original,
-    FourByThree,
+    FourThree,
+    SixteenNine,
     Fullscreen
 }
 
-data class VirtualPadLayout(
-    val dpadX: Float,
-    val dpadY: Float,
-    val buttonsX: Float,
-    val buttonsY: Float,
-    val startSelectX: Float,
-    val startSelectY: Float,
-) {
-    companion object {
-        val Default = VirtualPadLayout(
-            dpadX = 0.12f,
-            dpadY = 0.68f,
-            buttonsX = 0.78f,
-            buttonsY = 0.66f,
-            startSelectX = 0.44f,
-            startSelectY = 0.82f,
-        )
-    }
+enum class VirtualPadLayout {
+    Default,
+}
+
+enum class ControlMode {
+    VirtualPad,
+    Gamepad,
 }
 ```
 
@@ -143,8 +148,10 @@ DataStore key：
 - `virtual_pad_opacity`
 - `virtual_pad_scale`
 - `virtual_pad_layout`
+- `control_mode`
 - `hide_virtual_pad_when_gamepad_connected`
 - `auto_save_state_enabled`
+- `game_speed`
 
 ## GameOverrideSettings
 

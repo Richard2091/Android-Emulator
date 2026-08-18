@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -59,10 +61,30 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+val privateAssetsDir = run {
+    val gradleValue = providers.gradleProperty("retrohall.privateAssetsDir").orNull?.trim()
+    if (!gradleValue.isNullOrBlank()) {
+        gradleValue
+    } else {
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (!localPropertiesFile.isFile) {
+            null
+        } else {
+            val props = Properties()
+            localPropertiesFile.inputStream().use { input ->
+                props.load(input)
+            }
+            val localValue = props.getProperty("retrohall.privateAssetsDir")?.trim()
+            if (localValue.isNullOrBlank()) null else localValue
+        }
+    }
+}
+
 val prepareRetroHallPrivateAssets by tasks.registering(Copy::class) {
-    val privateAssetsDir = providers.gradleProperty("retrohall.privateAssetsDir")
-    onlyIf { privateAssetsDir.isPresent && file(privateAssetsDir.get()).exists() }
-    from(privateAssetsDir.map { file(it) })
+    onlyIf { privateAssetsDir != null && file(privateAssetsDir).exists() }
+    if (privateAssetsDir != null) {
+        from(file(privateAssetsDir))
+    }
     into(layout.buildDirectory.dir("generated/retrohallPrivateAssets/retrohall_private"))
 }
 
@@ -90,4 +112,11 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)
+
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.core)
+
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

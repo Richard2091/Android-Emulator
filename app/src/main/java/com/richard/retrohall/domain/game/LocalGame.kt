@@ -15,4 +15,6 @@ data class LocalGame(
     val romSha1: String = "",
     val romCrc32: String = "",
     val hotness: Double? = null,
+    val screenshots: List<String> = emptyList(),
+    val logos: List<String> = emptyList(),
 )

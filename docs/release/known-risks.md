@@ -23,6 +23,37 @@
 - 第一版只做个人研究和本地验证。
 - 公开分发前重新审查许可证。
 
+### 已采用 core 记录（2026-08）
+
+| core | 来源 | 许可证 | 校验 |
+| --- | --- | --- | --- |
+| FCEUmm (`fceumm_libretro_android.so`) | libretro buildbot nightly，`https://buildbot.libretro.com/nightly/android/latest/{abi}/`，`fceumm_libretro_android.so.zip` | GPL-2.0（libretro 分支） | 已用于魂斗罗实机验证，4 ABI 均可用 |
+| Mesen (`mesen_libretro_android.so`) | 同上（备用/回退） | GPL-3.0 | 仅 arm64-v8a 下载，未实机验证 |
+
+- `libretro.h` 来自 libretro 官方头（`app/src/main/cpp/libretro.h`），对应 RETRO_API_VERSION。
+- 分发前需核对 buildbot 具体 commit 的许可证文本。
+
+## instrumented 测试需分开运行
+
+风险：`LibretroCoreInstrumentedTest` 与 `GameplayFlowTest` 共享进程内的 native 宿主全局状态
+（`g_host`），并发运行时帧循环与直接 native 调用会互相干扰，导致音频断言偶发失败。
+
+控制方式：
+
+- 两个测试分别通过 `-Pandroid.testInstrumentationRunnerArguments.class=...` 单独运行。
+- 二者单独运行均稳定通过。
+- 后续可改为不同 `runnerBuilder` 进程隔离。
+
+## 输入注入可靠性风险（调试用）
+
+风险：`adb shell input text` 在模拟器上偶发附加尾随空格，导致搜索词不匹配。
+
+控制方式：
+
+- 调试时优先用 `adb shell input keyevent <KEYCODE 序列>` 输入 ASCII。
+- 中文搜索在自动化测试中用 Compose `performTextInput`（支持 Unicode）。
+- 私有资源标题当前为中文"魂斗罗"。
+
 ## NDK 编译复杂度
 
 风险：CMake、NDK、ABI、动态库加载路径导致构建或运行失败。
@@ -74,3 +105,13 @@
 - 第一版先保证可见画面。
 - 如果帧率不足，再切换到 SurfaceView/OpenGL 路径。
 - 不在大厅阶段提前优化渲染。
+
+## 工程收口风险
+
+风险：`RetroHallApp.kt` 仍然偏大，若继续在单文件内堆页面、控制器和辅助控件，后续维护会迅速失控。
+
+控制方式：
+
+- 继续按页面和职责拆分 `ui/` 下的文件。
+- 应用启动编排、数据预热和业务同步不要再放回 Compose 入口。
+- 设计文档、README 和代码结构变更保持同步，避免再次漂移。

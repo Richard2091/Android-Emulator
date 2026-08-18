@@ -12,11 +12,13 @@ data class UserSettings(
     val controlMode: ControlMode = ControlMode.VirtualPad,
     val hideVirtualPadWhenGamepadConnected: Boolean = true,
     val autoSaveStateEnabled: Boolean = true,
+    val gameSpeed: Float = 1f,
 )
 
 enum class AspectRatio {
     Original,
     FourThree,
+    SixteenNine,
     Fullscreen,
 }
 

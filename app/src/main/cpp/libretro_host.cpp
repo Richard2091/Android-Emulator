@@ -3,8 +3,10 @@
 #include <android/log.h>
 #include <dlfcn.h>
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <mutex>
 #include <string>
@@ -73,6 +75,26 @@ struct HostState {
     std::string content_dir;
     std::string save_dir;
     std::string system_dir;
+
+    // 视频帧输出：统一转换到 XRGB8888（小端内存顺序 B,G,R,A）。
+    std::vector<uint8_t> frame_buffer;
+    unsigned frame_width = 0;
+    unsigned frame_height = 0;
+    bool frame_ready = false;
+
+    // AV 信息：来自 retro_get_system_av_info。
+    double av_fps = 60.0;
+    unsigned av_sample_rate = 44100;
+    unsigned av_channels = 2;
+    unsigned av_base_width = 256;
+    unsigned av_base_height = 224;
+
+    // 音频环形缓冲：int16 立体声帧。
+    std::vector<int16_t> audio_ring;
+    size_t audio_capacity = 0;
+    size_t audio_head = 0;  // 写位置
+    size_t audio_tail = 0;  // 读位置
+    size_t audio_fill = 0;  // 已占用帧数
 };
 
 HostState g_host;
@@ -137,6 +159,15 @@ void reset_state() {
     g_host.content_dir.clear();
     g_host.save_dir.clear();
     g_host.system_dir.clear();
+    g_host.frame_buffer.clear();
+    g_host.frame_width = 0;
+    g_host.frame_height = 0;
+    g_host.frame_ready = false;
+    g_host.audio_ring.clear();
+    g_host.audio_capacity = 0;
+    g_host.audio_head = 0;
+    g_host.audio_tail = 0;
+    g_host.audio_fill = 0;
 }
 
 bool load_required_symbols(void *handle) {
@@ -215,14 +246,114 @@ bool environment_callback(unsigned cmd, void *data) {
     }
 }
 
-void video_refresh_callback(const void *, unsigned, unsigned, size_t) {
-    // Rendering is wired later; this frontend currently validates core execution headlessly.
+void convert_frame_to_xrgb(const void *data, unsigned width, unsigned height, size_t pitch) {
+    const size_t needed = static_cast<size_t>(width) * height * 4;
+    g_host.frame_buffer.resize(needed);
+    const uint8_t *src = static_cast<const uint8_t *>(data);
+    uint8_t *dst = g_host.frame_buffer.data();
+    switch (g_host.pixel_format) {
+        // 统一输出 R,G,B,A 字节序（Bitmap ARGB_8888 的 copyPixelsFromBuffer 期望）。
+        case RETRO_PIXEL_FORMAT_XRGB8888: {
+            // core 提供 XRGB8888（内存小端字节序 B,G,R,X），重排为 R,G,B,A。
+            for (unsigned y = 0; y < height; ++y) {
+                const uint8_t *row = src + static_cast<size_t>(y) * pitch;
+                uint8_t *out = dst + static_cast<size_t>(y) * width * 4;
+                for (unsigned x = 0; x < width; ++x) {
+                    out[0] = row[x * 4 + 2];  // R
+                    out[1] = row[x * 4 + 1];  // G
+                    out[2] = row[x * 4 + 0];  // B
+                    out[3] = 0xFF;            // A
+                    out += 4;
+                }
+            }
+            break;
+        }
+        case RETRO_PIXEL_FORMAT_RGB565: {
+            // 标准 RGB565（小端）：bit11-15 = R，bit5-10 = G，bit0-4 = B。
+            // 输出 R,G,B,A 字节序（Bitmap ARGB_8888 的 copyPixelsFromBuffer 期望）。
+            for (unsigned y = 0; y < height; ++y) {
+                const uint16_t *row = reinterpret_cast<const uint16_t *>(src + static_cast<size_t>(y) * pitch);
+                uint8_t *out = dst + static_cast<size_t>(y) * width * 4;
+                for (unsigned x = 0; x < width; ++x) {
+                    const uint16_t p = row[x];
+                    out[0] = static_cast<uint8_t>(((p >> 11) & 0x1F) * 255 / 31);      // R
+                    out[1] = static_cast<uint8_t>(((p >> 5) & 0x3F) * 255 / 63);       // G
+                    out[2] = static_cast<uint8_t>((p & 0x1F) * 255 / 31);              // B
+                    out[3] = 0xFF;                                                     // A
+                    out += 4;
+                }
+            }
+            break;
+        }
+        case RETRO_PIXEL_FORMAT_0RGB1555: {
+            // 标准 0RGB1555（小端）：bit14-10 = R，bit9-5 = G，bit4-0 = B，bit15 = 0。
+            for (unsigned y = 0; y < height; ++y) {
+                const uint16_t *row = reinterpret_cast<const uint16_t *>(src + static_cast<size_t>(y) * pitch);
+                uint8_t *out = dst + static_cast<size_t>(y) * width * 4;
+                for (unsigned x = 0; x < width; ++x) {
+                    const uint16_t p = row[x];
+                    out[0] = static_cast<uint8_t>(((p >> 10) & 0x1F) * 255 / 31);      // R
+                    out[1] = static_cast<uint8_t>(((p >> 5) & 0x1F) * 255 / 31);       // G
+                    out[2] = static_cast<uint8_t>((p & 0x1F) * 255 / 31);              // B
+                    out[3] = 0xFF;                                                     // A
+                    out += 4;
+                }
+            }
+            break;
+        }
+        default: {
+            std::fill(dst, dst + needed, 0x00);
+            for (size_t i = 3; i < needed; i += 4) dst[i] = 0xFF;
+            break;
+        }
+    }
 }
 
-void audio_sample_callback(int16_t, int16_t) {
+void audio_write_samples(const int16_t *data, size_t frames) {
+    if (g_host.audio_capacity == 0) return;
+    if (frames > g_host.audio_capacity) {
+        // 极端情况：一次写入超过整个缓冲，丢弃最老的。
+        g_host.audio_tail = 0;
+        g_host.audio_head = 0;
+        g_host.audio_fill = 0;
+        frames = g_host.audio_capacity;
+    }
+    const size_t avail = g_host.audio_capacity - g_host.audio_fill;
+    if (frames > avail) {
+        // 覆盖最老的音频（变速/快进时丢音，保持跟随游戏）。
+        const size_t drop = frames - avail;
+        g_host.audio_tail = (g_host.audio_tail + drop) % g_host.audio_capacity;
+        g_host.audio_fill -= drop;
+    }
+    for (size_t i = 0; i < frames; ++i) {
+        g_host.audio_ring[(g_host.audio_head + i) % g_host.audio_capacity] = data[i];
+    }
+    g_host.audio_head = (g_host.audio_head + frames) % g_host.audio_capacity;
+    g_host.audio_fill += frames;
 }
 
-size_t audio_sample_batch_callback(const int16_t *, size_t frames) {
+void video_refresh_callback(const void *data, unsigned width, unsigned height, size_t pitch) {
+    std::lock_guard<std::recursive_mutex> lock(g_host_mutex);
+    if (data == nullptr || width == 0 || height == 0 || pitch == 0) {
+        // RETRO_ENVIRONMENT_GET_CAN_DUPE 已声明支持 dupe，data 为 null 时保留上一帧。
+        return;
+    }
+    convert_frame_to_xrgb(data, width, height, pitch);
+    g_host.frame_width = width;
+    g_host.frame_height = height;
+    g_host.frame_ready = true;
+}
+
+void audio_sample_callback(int16_t left, int16_t right) {
+    std::lock_guard<std::recursive_mutex> lock(g_host_mutex);
+    const int16_t sample[2] = {left, right};
+    audio_write_samples(sample, 1);
+}
+
+size_t audio_sample_batch_callback(const int16_t *data, size_t frames) {
+    std::lock_guard<std::recursive_mutex> lock(g_host_mutex);
+    if (data == nullptr || frames == 0) return frames;
+    audio_write_samples(data, frames);
     return frames;
 }
 
@@ -372,6 +503,23 @@ Java_com_richard_retrohall_emulator_LibretroHost_loadGame(JNIEnv *env, jobject, 
 
     retro_system_av_info av_info{};
     g_host.api.get_system_av_info(&av_info);
+    g_host.av_fps = av_info.timing.fps > 0.0 ? av_info.timing.fps : 60.0;
+    g_host.av_sample_rate = av_info.timing.sample_rate > 0 ? av_info.timing.sample_rate : 44100;
+    g_host.av_channels = 2;
+    g_host.av_base_width = av_info.geometry.base_width > 0 ? av_info.geometry.base_width : 256;
+    g_host.av_base_height = av_info.geometry.base_height > 0 ? av_info.geometry.base_height : 224;
+
+    // 重置输出缓冲，避免上一局残留画面/音频。
+    g_host.frame_buffer.clear();
+    g_host.frame_width = 0;
+    g_host.frame_height = 0;
+    g_host.frame_ready = false;
+    g_host.audio_capacity = 8192;
+    g_host.audio_ring.assign(g_host.audio_capacity, 0);
+    g_host.audio_head = 0;
+    g_host.audio_tail = 0;
+    g_host.audio_fill = 0;
+
     log_info("game loaded");
     return JNI_TRUE;
 }
@@ -471,4 +619,87 @@ Java_com_richard_retrohall_emulator_LibretroHost_setInputState(
     } else {
         g_host.input_mask &= ~mask;
     }
+}
+
+extern "C"
+JNIEXPORT jintArray JNICALL
+Java_com_richard_retrohall_emulator_LibretroHost_nativeGetFrameInfo(JNIEnv *env, jobject) {
+    std::lock_guard<std::recursive_mutex> lock(g_host_mutex);
+    jintArray result = env->NewIntArray(3);
+    if (result == nullptr) return nullptr;
+    const jint values[3] = {
+        static_cast<jint>(g_host.frame_width),
+        static_cast<jint>(g_host.frame_height),
+        g_host.frame_ready ? static_cast<jint>(1) : static_cast<jint>(0),
+    };
+    env->SetIntArrayRegion(result, 0, 3, values);
+    return result;
+}
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_richard_retrohall_emulator_LibretroHost_pollFrame(JNIEnv *env, jobject, jbyteArray dst) {
+    std::lock_guard<std::recursive_mutex> lock(g_host_mutex);
+    if (!g_host.game_loaded || !g_host.frame_ready) return 0;
+    const size_t needed = static_cast<size_t>(g_host.frame_width) * g_host.frame_height * 4;
+    const jsize cap = env->GetArrayLength(dst);
+    if (static_cast<size_t>(cap) < needed) return -1;
+    env->SetByteArrayRegion(
+        dst,
+        0,
+        static_cast<jsize>(needed),
+        reinterpret_cast<const jbyte *>(g_host.frame_buffer.data())
+    );
+    return static_cast<jint>(needed);
+}
+
+extern "C"
+JNIEXPORT jdoubleArray JNICALL
+Java_com_richard_retrohall_emulator_LibretroHost_nativeGetAvInfo(JNIEnv *env, jobject) {
+    std::lock_guard<std::recursive_mutex> lock(g_host_mutex);
+    jdoubleArray result = env->NewDoubleArray(6);
+    if (result == nullptr) return nullptr;
+    const jdouble values[6] = {
+        g_host.av_fps,
+        static_cast<jdouble>(g_host.av_sample_rate),
+        static_cast<jdouble>(g_host.av_channels),
+        static_cast<jdouble>(g_host.av_base_width),
+        static_cast<jdouble>(g_host.av_base_height),
+        1.0, // 预留：aspect ratio
+    };
+    env->SetDoubleArrayRegion(result, 0, 6, values);
+    return result;
+}
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_richard_retrohall_emulator_LibretroHost_drainAudio(JNIEnv *env, jobject, jbyteArray dst) {
+    std::lock_guard<std::recursive_mutex> lock(g_host_mutex);
+    if (!g_host.game_loaded || g_host.audio_fill == 0) return 0;
+    const jsize cap = env->GetArrayLength(dst);
+    const size_t maxFrames = static_cast<size_t>(cap) / 2;
+    if (maxFrames == 0) return 0;
+    const size_t toRead = std::min(maxFrames, g_host.audio_fill);
+    std::vector<int16_t> tmp(toRead);
+    for (size_t i = 0; i < toRead; ++i) {
+        tmp[i] = g_host.audio_ring[(g_host.audio_tail + i) % g_host.audio_capacity];
+    }
+    g_host.audio_tail = (g_host.audio_tail + toRead) % g_host.audio_capacity;
+    g_host.audio_fill -= toRead;
+    env->SetByteArrayRegion(
+        dst,
+        0,
+        static_cast<jsize>(toRead * 2),
+        reinterpret_cast<const jbyte *>(tmp.data())
+    );
+    return static_cast<jint>(toRead * 2);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_richard_retrohall_emulator_LibretroHost_resetAudio(JNIEnv *, jobject) {
+    std::lock_guard<std::recursive_mutex> lock(g_host_mutex);
+    g_host.audio_head = 0;
+    g_host.audio_tail = 0;
+    g_host.audio_fill = 0;
 }

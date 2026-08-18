@@ -1,8 +1,8 @@
 # Retro Hall
 
-一个面向 Android 的本地游戏库与模拟器交互原型。项目使用 Kotlin、Jetpack Compose、Room 和 DataStore 构建游戏库、收藏、游玩记录、即时存档与设置管理等基础能力，并预留 libretro 原生宿主接口。
+一个面向 Android 的本地游戏库与模拟器交互原型。项目使用 Kotlin、Jetpack Compose、Room 和 DataStore 构建游戏库、收藏、游玩记录、即时存档与设置管理等基础能力，并集成 libretro 原生宿主接口。
 
-当前版本重点验证应用架构和本地数据流程；真实模拟器核心接入仍处于后续阶段。
+当前版本已经打通本地数据流程、真实 libretro 核心降级链路与主要交互闭环；后续重点是继续收口分包、拆分大文件、同步文档和清理仓库杂物。
 
 ## 已实现
 
@@ -11,7 +11,7 @@
 - 即时存档、读档、重置和暂停菜单的交互流程
 - Room 本地数据持久化与 DataStore 设置管理
 - 虚拟按键、画面比例、音量和显示选项
-- libretro 原生宿主接口与 JNI/CMake 工程骨架
+- libretro 原生宿主接口、JNI/CMake 工程骨架与真实核心兜底链路
 
 ## 技术栈
 
@@ -40,4 +40,4 @@ Pages 生成会把封面下载并缓存到静态输出目录，再把 `coverUrl`
 
 ## 当前边界
 
-界面和业务流程目前通过 `FakeEmulatorSession` 验证；`LibretroHost` 已提供原生接口定义，但尚未完成真实核心加载、音视频渲染和输入循环集成。
+界面和业务流程保留 `FakeEmulatorSession` 作为兜底；真实核心路径已经通过 `LibretroHost`、`LibretroEmulatorSession` 和 instrumented tests 验证，但 UI 文件还偏大，仍需要继续拆分和整理。

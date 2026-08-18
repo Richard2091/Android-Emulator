@@ -27,6 +27,7 @@ class UserSettingsStore(private val context: Context) {
             controlMode = preferences[Keys.ControlMode]?.let { ControlMode.valueOf(it) } ?: ControlMode.VirtualPad,
             hideVirtualPadWhenGamepadConnected = preferences[Keys.HideVirtualPadWhenGamepadConnected] ?: true,
             autoSaveStateEnabled = preferences[Keys.AutoSaveStateEnabled] ?: true,
+            gameSpeed = preferences[Keys.GameSpeed] ?: 1f,
         )
     }
 
@@ -42,6 +43,7 @@ class UserSettingsStore(private val context: Context) {
             preferences[Keys.ControlMode] = settings.controlMode.name
             preferences[Keys.HideVirtualPadWhenGamepadConnected] = settings.hideVirtualPadWhenGamepadConnected
             preferences[Keys.AutoSaveStateEnabled] = settings.autoSaveStateEnabled
+            preferences[Keys.GameSpeed] = settings.gameSpeed.coerceIn(0.5f, 2f)
         }
     }
 
@@ -56,5 +58,6 @@ class UserSettingsStore(private val context: Context) {
         val ControlMode = stringPreferencesKey("control_mode")
         val HideVirtualPadWhenGamepadConnected = booleanPreferencesKey("hide_virtual_pad_when_gamepad_connected")
         val AutoSaveStateEnabled = booleanPreferencesKey("auto_save_state_enabled")
+        val GameSpeed = floatPreferencesKey("game_speed")
     }
 }

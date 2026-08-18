@@ -16,6 +16,17 @@ class RomDownloadManager(context: Context) {
         return dir.listFiles()?.any { it.isFile && it.length() > 0L } == true
     }
 
+    /**
+     * 本地注入的 ROM（如 files/roms 下的私有资源）也视为已下载。
+     */
+    fun isDownloaded(game: LocalGame): Boolean {
+        if (!game.romPath.startsWith("http://") && !game.romPath.startsWith("https://")) {
+            val file = File(game.romPath)
+            return file.isFile && file.length() > 0L
+        }
+        return isDownloaded(game.id)
+    }
+
     fun localSize(gameId: String): Long? {
         val dir = File(filesRoot, "rom-cache/$gameId")
         val files = dir.listFiles()?.filter { it.isFile && it.length() > 0L } ?: return null

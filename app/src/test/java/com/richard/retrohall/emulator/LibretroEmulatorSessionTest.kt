@@ -64,4 +64,9 @@ private class FakeLibretroCoreHost(
     override fun unserializeState(path: String): Boolean = true
     override fun saveSram(path: String): Boolean = true
     override fun setInputState(actionName: String, pressed: Boolean) = Unit
+    override fun getFrameInfo(): NativeFrameInfo? = NativeFrameInfo(width = 0, height = 0, ready = false)
+    override fun pollFrame(dst: ByteArray): Int = 0
+    override fun getAvInfo(): NativeAvInfo? = NativeAvInfo(fps = 60.0, sampleRate = 44100, channels = 2, baseWidth = 256, baseHeight = 224)
+    override fun drainAudio(dst: ByteArray): Int = 0
+    override fun resetAudio() = Unit
 }

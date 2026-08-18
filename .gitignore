@@ -12,6 +12,8 @@ public/
 # Build/test outputs and Python caches
 output/
 scripts/__pycache__/
+tmp-*
+tmp-manifest-*/
 
 # Android private resources and outputs
 *.apk

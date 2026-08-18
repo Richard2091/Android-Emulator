@@ -19,7 +19,7 @@ class CorePathResolverTest {
 
         val resolver = CorePathResolver(filesRoot, listOf("x86", "arm64-v8a"))
 
-        assertEquals(core.absolutePath, resolver.resolve("FC/NES")?.absolutePath)
+        assertEquals(core.absolutePath, resolver.resolve("FC/NES")?.file?.absolutePath)
     }
 
     @Test
