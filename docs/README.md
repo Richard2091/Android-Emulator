@@ -84,6 +84,8 @@ ROM 和资源边界：
 
 - `docs/release/build-and-package.md`
 - `docs/release/known-risks.md`
+- `docs/release/v0.1.0-apk-release.md`
+- `docs/release/v1-local-validation-report.md`
 
 ## 执行原则
 

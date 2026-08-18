@@ -20,14 +20,42 @@ Debug APK 仅用于个人研究和本地验证。
 
 ## Release APK
 
-第一版默认不要求公开 Release APK。
+`0.1.0` 公开发布使用 Release APK。
 
-如果需要生成 Release APK，必须先确认：
+构建命令：
+
+```powershell
+.\gradlew.bat clean :app:assembleRelease
+```
+
+产物路径：
+
+```text
+app/build/outputs/apk/release/app-release.apk
+```
+
+如果未提供 release 签名配置，构建会直接失败，不会产出可分发 APK。
+
+签名配置通过本地 `local.properties` 或环境变量读取：
+
+- `retrohall.release.storeFile`
+- `retrohall.release.storePassword`
+- `retrohall.release.keyAlias`
+- `retrohall.release.keyPassword`
+
+或对应环境变量：
+
+- `RETROHALL_RELEASE_STORE_FILE`
+- `RETROHALL_RELEASE_STORE_PASSWORD`
+- `RETROHALL_RELEASE_KEY_ALIAS`
+- `RETROHALL_RELEASE_KEY_PASSWORD`
+
+Release APK 必须先确认：
 
 - APK 不包含商业 ROM。
 - APK 不包含私有 ROM。
 - APK 不包含私有测试资源。
-- APK 不包含私有签名配置。
+- APK 不包含签名文件。
 - 许可证边界已检查。
 
 ## 签名
@@ -65,10 +93,10 @@ adb logcat | Select-String "RetroHall"
 
 ## 发布边界
 
-第一版产物只用于：
+Debug APK 只用于：
 
 - 个人研究
 - 本地验证
 - 私有设备测试
 
-不得公开分发带 ROM 的 APK。
+Release APK 用于公开下载，但不得打入 ROM、私有资源或签名材料。

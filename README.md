@@ -4,6 +4,13 @@
 
 当前版本已经打通本地数据流程、真实 libretro 宿主与私有 core / ROM 注入链路的本地冒烟验证，以及主要交互闭环；后续重点是继续收口分包、拆分大文件、同步文档和清理仓库杂物。
 
+## 公开发布
+
+`0.1.0` 已作为公开 APK release 准备发布，公开下载包以 GitHub Releases 的 `v0.1.0` 为准。发布包与本地验证包分开管理：
+
+- 公开下载：`RetroHall-v0.1.0-release.apk`
+- 本地验证：`app/build/outputs/apk/debug/app-debug.apk`
+
 ## 已实现
 
 - 游戏大厅、分类筛选、收藏和最近游玩记录

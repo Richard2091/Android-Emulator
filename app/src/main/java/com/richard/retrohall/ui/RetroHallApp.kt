@@ -6,6 +6,13 @@ import android.graphics.BlurMaskFilter
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -170,6 +177,7 @@ import com.richard.retrohall.domain.save.SaveStateStore
 import com.richard.retrohall.domain.settings.AspectRatio
 import com.richard.retrohall.domain.settings.CacheMaintenance
 import com.richard.retrohall.domain.settings.ControlMode
+import com.richard.retrohall.domain.settings.VirtualPadVisibility
 import com.richard.retrohall.domain.settings.UserSettings
 import com.richard.retrohall.emulator.EmulatorSession
 import com.richard.retrohall.emulator.EmulatorSessionFactory
@@ -2328,7 +2336,12 @@ private fun GameScreen(
     var paused by remember { mutableStateOf(false) }
     var settingsVisible by remember { mutableStateOf(false) }
     var message by remember(launchNotice) { mutableStateOf(launchNotice) }
-    val showPad = settings.controlMode == ControlMode.VirtualPad && settings.virtualPadVisible
+    val autoHideMode = settings.controlMode == ControlMode.VirtualPad &&
+        settings.virtualPadVisibility == VirtualPadVisibility.AutoHide
+    val showPadAlways = settings.controlMode == ControlMode.VirtualPad &&
+        settings.virtualPadVisibility == VirtualPadVisibility.Visible
+    var autoHidePadVisible by rememberSaveable { mutableStateOf(false) }
+    var autoHideTicket by remember { mutableStateOf(0) }
     val padOpacity = settings.virtualPadOpacity.coerceIn(0.2f, 1f)
     val padScale = minOf(settings.virtualPadScale.coerceIn(0.6f, 1.6f), 1.15f)
     val scope = rememberCoroutineScope()
@@ -2346,6 +2359,23 @@ private fun GameScreen(
         session.setGameSpeed(settings.gameSpeed)
     }
 
+    LaunchedEffect(settings.controlMode, settings.virtualPadVisibility) {
+        autoHidePadVisible = showPadAlways
+        autoHideTicket += 1
+    }
+
+    LaunchedEffect(autoHideTicket, settings.controlMode, settings.virtualPadVisibility, paused, settingsVisible) {
+        if (!autoHideMode || !autoHidePadVisible || paused || settingsVisible) return@LaunchedEffect
+        delay(3000)
+        if (settings.controlMode == ControlMode.VirtualPad &&
+            settings.virtualPadVisibility == VirtualPadVisibility.AutoHide &&
+            !paused &&
+            !settingsVisible
+        ) {
+            autoHidePadVisible = false
+        }
+    }
+
     // 瞬时按键（开始/选择）需要保持按下至少一帧，否则帧循环采样不到按下状态。
     fun tapKey(action: GameAction) {
         scope.launch {
@@ -2353,6 +2383,24 @@ private fun GameScreen(
             delay(120)
             session.sendInput(action, false)
         }
+    }
+
+    fun revealVirtualPad() {
+        if (!autoHideMode) return
+        autoHidePadVisible = true
+        autoHideTicket += 1
+    }
+
+    fun hideVirtualPad() {
+        if (!autoHideMode) return
+        autoHidePadVisible = false
+        autoHideTicket += 1
+    }
+
+    fun registerVirtualPadInteraction() {
+        if (!autoHideMode) return
+        autoHidePadVisible = true
+        autoHideTicket += 1
     }
 
     fun resumeGame() {
@@ -2398,68 +2446,128 @@ private fun GameScreen(
                     }
                 }
 
-                if (showPad) {
-                    Column(
+                if (settings.controlMode == ControlMode.VirtualPad) {
+                    Box(
                         modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .width(168.dp * padScale)
-                            .fillMaxHeight()
-                            .padding(start = 10.dp, top = 8.dp, bottom = 8.dp)
-                            .zIndex(2f),
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                            .fillMaxSize()
+                            .zIndex(1f),
                     ) {
-                        Box(modifier = Modifier.offset(y = 46.dp)) {
-                            JoyStickPad(
-                                opacity = padOpacity,
-                                onDirs = { u, d, l, r ->
-                                    session.sendInput(GameAction.Up, u)
-                                    session.sendInput(GameAction.Down, d)
-                                    session.sendInput(GameAction.Left, l)
-                                    session.sendInput(GameAction.Right, r)
-                                },
-                                modifier = Modifier.size(156.dp * padScale),
+                        if (autoHideMode && !paused && !settingsVisible) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .pointerInput(autoHidePadVisible) {
+                                        detectTapGestures(onTap = {
+                                            if (autoHidePadVisible) {
+                                                hideVirtualPad()
+                                            } else {
+                                                revealVirtualPad()
+                                            }
+                                        })
+                                    },
                             )
                         }
-                        Spacer(modifier = Modifier.weight(1f))
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            PillButton("设置", padOpacity, danger = false) {
-                                pauseGame()
-                                settingsVisible = true
-                            }
-                            PillButton(if (paused) "继续" else "暂停", padOpacity, danger = false) {
-                                if (paused) {
-                                    resumeGame()
-                                    message = "已继续游戏"
-                                } else {
-                                    pauseGame()
-                                }
-                            }
-                        }
-                    }
 
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .width(158.dp * padScale)
-                            .fillMaxHeight()
-                            .padding(end = 10.dp, top = 8.dp, bottom = 8.dp)
-                            .zIndex(2f),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Box(modifier = Modifier.offset(y = 44.dp)) {
-                            AbxyPad(
-                                opacity = padOpacity,
-                                onAction = { a, p -> session.sendInput(a, p) },
-                                modifier = Modifier.size(150.dp * padScale),
-                            )
-                        }
-                        Spacer(modifier = Modifier.weight(1f))
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            PillButton("选择", padOpacity, danger = false) {
-                                tapKey(GameAction.Select)
-                            }
-                            PillButton("开始", padOpacity, danger = false) {
-                                tapKey(GameAction.Start)
+                        AnimatedVisibility(
+                            visible = autoHidePadVisible,
+                            enter = fadeIn() + slideInHorizontally { fullWidth -> fullWidth / 4 },
+                            exit = fadeOut() + slideOutHorizontally { fullWidth -> fullWidth / 4 },
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.CenterStart)
+                                        .width(168.dp * padScale)
+                                        .fillMaxHeight()
+                                        .padding(start = 10.dp, top = 8.dp, bottom = 8.dp)
+                                        .zIndex(2f),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    AnimatedVisibility(
+                                        visible = autoHidePadVisible,
+                                        enter = fadeIn() + slideInHorizontally { fullWidth -> -fullWidth },
+                                        exit = fadeOut() + slideOutHorizontally { fullWidth -> -fullWidth },
+                                    ) {
+                                        Box(modifier = Modifier.offset(y = 46.dp)) {
+                                            JoyStickPad(
+                                                opacity = padOpacity,
+                                                onInteraction = ::registerVirtualPadInteraction,
+                                                onDirs = { u, d, l, r ->
+                                                    registerVirtualPadInteraction()
+                                                    session.sendInput(GameAction.Up, u)
+                                                    session.sendInput(GameAction.Down, d)
+                                                    session.sendInput(GameAction.Left, l)
+                                                    session.sendInput(GameAction.Right, r)
+                                                },
+                                                modifier = Modifier.size(156.dp * padScale),
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    AnimatedVisibility(
+                                        visible = autoHidePadVisible,
+                                        enter = fadeIn() + slideInVertically { fullHeight -> fullHeight / 2 },
+                                        exit = fadeOut() + slideOutVertically { fullHeight -> fullHeight / 2 },
+                                    ) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            PillButton("设置", padOpacity, danger = false, onInteraction = ::registerVirtualPadInteraction) {
+                                                pauseGame()
+                                                settingsVisible = true
+                                            }
+                                            PillButton(if (paused) "继续" else "暂停", padOpacity, danger = false, onInteraction = ::registerVirtualPadInteraction) {
+                                                if (paused) {
+                                                    resumeGame()
+                                                    message = "已继续游戏"
+                                                } else {
+                                                    pauseGame()
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .width(158.dp * padScale)
+                                        .fillMaxHeight()
+                                        .padding(end = 10.dp, top = 8.dp, bottom = 8.dp)
+                                        .zIndex(2f),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    AnimatedVisibility(
+                                        visible = autoHidePadVisible,
+                                        enter = fadeIn() + slideInHorizontally { fullWidth -> fullWidth },
+                                        exit = fadeOut() + slideOutHorizontally { fullWidth -> fullWidth },
+                                    ) {
+                                        Box(modifier = Modifier.offset(y = 44.dp)) {
+                                            AbxyPad(
+                                                opacity = padOpacity,
+                                                onInteraction = ::registerVirtualPadInteraction,
+                                                onAction = { a, p ->
+                                                    registerVirtualPadInteraction()
+                                                    session.sendInput(a, p)
+                                                },
+                                                modifier = Modifier.size(150.dp * padScale),
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    AnimatedVisibility(
+                                        visible = autoHidePadVisible,
+                                        enter = fadeIn() + slideInVertically { fullHeight -> fullHeight / 2 },
+                                        exit = fadeOut() + slideOutVertically { fullHeight -> fullHeight / 2 },
+                                    ) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            PillButton("选择", padOpacity, danger = false, onInteraction = ::registerVirtualPadInteraction) {
+                                                tapKey(GameAction.Select)
+                                            }
+                                            PillButton("开始", padOpacity, danger = false, onInteraction = ::registerVirtualPadInteraction) {
+                                                tapKey(GameAction.Start)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -2474,6 +2582,10 @@ private fun GameScreen(
         GameSettingsOverlay(
             settings = settings,
             onContinue = { resumeGame(); message = "已继续游戏" },
+            onVirtualPadVisibilityChange = { next ->
+                onUpdateSettings(settings.copy(virtualPadVisibility = next))
+                message = if (next == VirtualPadVisibility.Visible) "虚拟按键：显示" else "虚拟按键：自动隐藏"
+            },
             onAspectRatioChange = { next ->
                 onUpdateSettings(settings.copy(aspectRatio = next))
                 message = "画面比例：${aspectRatioLabel(next)}"
@@ -2561,6 +2673,7 @@ private fun PauseWatermark() {
 @Composable
 private fun JoyStickPad(
     onDirs: (up: Boolean, down: Boolean, left: Boolean, right: Boolean) -> Unit,
+    onInteraction: () -> Unit = {},
     modifier: Modifier = Modifier,
     opacity: Float = 0.7f,
 ) {
@@ -2613,6 +2726,7 @@ private fun JoyStickPad(
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
+                    onInteraction()
                     apply(down.position.x, down.position.y, size.width.toFloat())
                     while (true) {
                         val event = awaitPointerEvent()
@@ -2749,6 +2863,7 @@ private fun DrawScope.drawZone(active: Boolean, center: Offset, radius: Float, s
 @Composable
 private fun AbxyPad(
     onAction: (GameAction, Boolean) -> Unit,
+    onInteraction: () -> Unit = {},
     modifier: Modifier = Modifier,
     opacity: Float = 0.7f,
 ) {
@@ -2756,21 +2871,25 @@ private fun AbxyPad(
         RoundKey(
             label = "X", action = GameAction.NesA, color = UiBlue,
             onAction = onAction,
+            onInteraction = onInteraction,
             modifier = Modifier.align(Alignment.TopCenter).size(56.dp),
         )
         RoundKey(
             label = "Y", action = GameAction.NesB, color = Color(0xFFC8B6FF),
             onAction = onAction,
+            onInteraction = onInteraction,
             modifier = Modifier.align(Alignment.CenterStart).size(56.dp),
         )
         RoundKey(
             label = "B", action = GameAction.NesB, color = UiGold,
             onAction = onAction,
+            onInteraction = onInteraction,
             modifier = Modifier.align(Alignment.CenterEnd).size(56.dp),
         )
         RoundKey(
             label = "A", action = GameAction.NesA, color = UiCyan,
             onAction = onAction,
+            onInteraction = onInteraction,
             modifier = Modifier.align(Alignment.BottomCenter).size(56.dp),
         )
     }
@@ -2782,6 +2901,7 @@ private fun RoundKey(
     action: GameAction,
     color: Color,
     onAction: (GameAction, Boolean) -> Unit,
+    onInteraction: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -2842,6 +2962,7 @@ private fun RoundKey(
             .pointerInput(action) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
+                    onInteraction()
                     pressed = true
                     onAction(action, true)
                     while (true) {
@@ -2874,6 +2995,7 @@ private fun PillButton(
     opacity: Float,
     modifier: Modifier = Modifier,
     danger: Boolean = false,
+    onInteraction: () -> Unit = {},
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -2884,7 +3006,10 @@ private fun PillButton(
             .clip(RoundedCornerShape(999.dp))
             .background(if (pressed) UiCyan.copy(alpha = 0.25f) else Color(0xE6101D22))
             .border(1.5.dp, if (pressed) UiCyan else UiLine, RoundedCornerShape(999.dp))
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null) {
+                onInteraction()
+                onClick()
+            }
             .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -2901,6 +3026,7 @@ private fun PillButton(
 private fun GameSettingsOverlay(
     settings: UserSettings,
     onContinue: () -> Unit,
+    onVirtualPadVisibilityChange: (VirtualPadVisibility) -> Unit,
     onAspectRatioChange: (AspectRatio) -> Unit,
     onSave: () -> Unit,
     onLoad: () -> Unit,
@@ -2951,6 +3077,17 @@ private fun GameSettingsOverlay(
                         values = GameSpeedOptions.map { gameSpeedLabel(it) },
                         selectedIndex = GameSpeedOptions.indexOfFirst { it == settings.gameSpeed }.coerceAtLeast(0),
                         onSelected = { index -> onGameSpeedChange(GameSpeedOptions[index]) },
+                    )
+                }
+                GameSettingRow("虚拟按键") {
+                    SegmentedChoice(
+                        values = listOf("显示", "自动隐藏"),
+                        selectedIndex = if (settings.virtualPadVisibility == VirtualPadVisibility.Visible) 0 else 1,
+                        onSelected = { index ->
+                            onVirtualPadVisibilityChange(
+                                if (index == 0) VirtualPadVisibility.Visible else VirtualPadVisibility.AutoHide,
+                            )
+                        },
                     )
                 }
                 GameSettingRow("即时存档") {
@@ -3130,18 +3267,29 @@ private fun SettingsControlSection(
 ) {
     SettingsSection(title = "控制", modifier = modifier, dense = dense) {
         SettingRow("操作模式", first = true, dense = dense) {
+                SegmentedChoice(
+                    values = ControlMode.entries.map { controlModeLabel(it) },
+                    selectedIndex = ControlMode.entries.indexOf(settings.controlMode),
+                    onSelected = { index ->
+                        val mode = ControlMode.entries[index]
+                        onUpdateSettings(settings.copy(controlMode = mode))
+                    },
+                    compact = dense,
+                )
+            }
+        SettingRow("虚拟按键", dense = dense) {
             SegmentedChoice(
-                values = ControlMode.entries.map { controlModeLabel(it) },
-                selectedIndex = ControlMode.entries.indexOf(settings.controlMode),
+                values = listOf("显示", "自动隐藏"),
+                selectedIndex = if (settings.virtualPadVisibility == VirtualPadVisibility.Visible) 0 else 1,
                 onSelected = { index ->
-                    val mode = ControlMode.entries[index]
-                    onUpdateSettings(settings.copy(controlMode = mode, virtualPadVisible = mode == ControlMode.VirtualPad))
+                    onUpdateSettings(
+                        settings.copy(
+                            virtualPadVisibility = if (index == 0) VirtualPadVisibility.Visible else VirtualPadVisibility.AutoHide,
+                        ),
+                    )
                 },
                 compact = dense,
             )
-        }
-        SettingRow("虚拟按键", dense = dense) {
-            HallToggle(checked = settings.virtualPadVisible, compact = dense, onCheckedChange = { onUpdateSettings(settings.copy(virtualPadVisible = it)) })
         }
         SettingRow("按键透明度", dense = dense) {
             HallSlider(value = settings.virtualPadOpacity, compact = dense, onValueChange = { onUpdateSettings(settings.copy(virtualPadOpacity = it)) })

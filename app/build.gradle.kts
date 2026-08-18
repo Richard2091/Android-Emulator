@@ -7,6 +7,65 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+data class ReleaseSigningConfig(
+    val storeFile: File,
+    val storePassword: String,
+    val keyAlias: String,
+    val keyPassword: String,
+)
+
+fun loadProjectProperties(): Properties {
+    val props = Properties()
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.isFile) {
+        localPropertiesFile.inputStream().use { input ->
+            props.load(input)
+        }
+    }
+    return props
+}
+
+val projectProperties = loadProjectProperties()
+
+fun resolveProperty(name: String, envName: String): String? {
+    val gradleValue = providers.gradleProperty(name).orNull?.trim()
+    if (!gradleValue.isNullOrBlank()) {
+        return gradleValue
+    }
+
+    val envValue = System.getenv(envName)?.trim()
+    if (!envValue.isNullOrBlank()) {
+        return envValue
+    }
+
+    val localValue = projectProperties.getProperty(name)?.trim()
+    return if (localValue.isNullOrBlank()) null else localValue
+}
+
+val releaseSigningConfig = run {
+    val storeFile = resolveProperty("retrohall.release.storeFile", "RETROHALL_RELEASE_STORE_FILE")
+    val storePassword = resolveProperty("retrohall.release.storePassword", "RETROHALL_RELEASE_STORE_PASSWORD")
+    val keyAlias = resolveProperty("retrohall.release.keyAlias", "RETROHALL_RELEASE_KEY_ALIAS")
+    val keyPassword = resolveProperty("retrohall.release.keyPassword", "RETROHALL_RELEASE_KEY_PASSWORD")
+    if (
+        storeFile.isNullOrBlank() ||
+        storePassword.isNullOrBlank() ||
+        keyAlias.isNullOrBlank() ||
+        keyPassword.isNullOrBlank()
+    ) {
+        null
+    } else {
+        ReleaseSigningConfig(
+            storeFile = file(storeFile),
+            storePassword = storePassword,
+            keyAlias = keyAlias,
+            keyPassword = keyPassword,
+        )
+    }
+}
+
+val privateAssetsDir = resolveProperty("retrohall.privateAssetsDir", "RETROHALL_PRIVATE_ASSETS_DIR")
+
 android {
     namespace = "com.richard.retrohall"
     compileSdk = 36
@@ -21,6 +80,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    if (releaseSigningConfig != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = releaseSigningConfig.storeFile
+                storePassword = releaseSigningConfig.storePassword
+                keyAlias = releaseSigningConfig.keyAlias
+                keyPassword = releaseSigningConfig.keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -28,6 +98,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (releaseSigningConfig != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -61,25 +134,6 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
-val privateAssetsDir = run {
-    val gradleValue = providers.gradleProperty("retrohall.privateAssetsDir").orNull?.trim()
-    if (!gradleValue.isNullOrBlank()) {
-        gradleValue
-    } else {
-        val localPropertiesFile = rootProject.file("local.properties")
-        if (!localPropertiesFile.isFile) {
-            null
-        } else {
-            val props = Properties()
-            localPropertiesFile.inputStream().use { input ->
-                props.load(input)
-            }
-            val localValue = props.getProperty("retrohall.privateAssetsDir")?.trim()
-            if (localValue.isNullOrBlank()) null else localValue
-        }
-    }
-}
-
 val prepareRetroHallPrivateAssets by tasks.registering(Copy::class) {
     onlyIf { privateAssetsDir != null && file(privateAssetsDir).exists() }
     if (privateAssetsDir != null) {
@@ -90,6 +144,14 @@ val prepareRetroHallPrivateAssets by tasks.registering(Copy::class) {
 
 tasks.matching { it.name == "mergeDebugAssets" }.configureEach {
     dependsOn(prepareRetroHallPrivateAssets)
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        checkNotNull(releaseSigningConfig) {
+            "Release signing config is missing. Set retrohall.release.storeFile, retrohall.release.storePassword, retrohall.release.keyAlias and retrohall.release.keyPassword, or provide RETROHALL_RELEASE_STORE_FILE, RETROHALL_RELEASE_STORE_PASSWORD, RETROHALL_RELEASE_KEY_ALIAS and RETROHALL_RELEASE_KEY_PASSWORD."
+        }
+    }
 }
 
 dependencies {

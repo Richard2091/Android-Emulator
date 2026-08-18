@@ -252,7 +252,7 @@ interface EmulatorSession {
 - 滤镜开关
 - 声音开关
 - 音量
-- 虚拟按键显示开关
+- 虚拟按键显示方式
 - 虚拟按键透明度
 - 虚拟按键大小
 - 虚拟按键位置
@@ -353,7 +353,7 @@ aspectRatio
 filterEnabled
 audioEnabled
 volume
-virtualPadVisible
+virtualPadVisibility
 virtualPadOpacity
 virtualPadScale
 virtualPadLayout

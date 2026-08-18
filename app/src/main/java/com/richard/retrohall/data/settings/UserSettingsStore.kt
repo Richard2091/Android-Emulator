@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.richard.retrohall.domain.settings.AspectRatio
 import com.richard.retrohall.domain.settings.ControlMode
+import com.richard.retrohall.domain.settings.VirtualPadVisibility
 import com.richard.retrohall.domain.settings.UserSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -16,12 +17,20 @@ private val Context.userSettingsDataStore by preferencesDataStore(name = "user_s
 
 class UserSettingsStore(private val context: Context) {
     val settings: Flow<UserSettings> = context.userSettingsDataStore.data.map { preferences ->
+        val virtualPadVisibility = preferences[Keys.VirtualPadVisibility]?.let {
+            runCatching { VirtualPadVisibility.valueOf(it) }.getOrNull()
+        } ?: when (preferences[Keys.VirtualPadVisible]) {
+            false -> VirtualPadVisibility.AutoHide
+            true -> VirtualPadVisibility.Visible
+            null -> VirtualPadVisibility.Visible
+        }
+
         UserSettings(
             aspectRatio = preferences[Keys.AspectRatio]?.let { AspectRatio.valueOf(it) } ?: AspectRatio.Original,
             filterEnabled = preferences[Keys.FilterEnabled] ?: false,
             audioEnabled = preferences[Keys.AudioEnabled] ?: true,
             volume = preferences[Keys.Volume] ?: 0.8f,
-            virtualPadVisible = preferences[Keys.VirtualPadVisible] ?: true,
+            virtualPadVisibility = virtualPadVisibility,
             virtualPadOpacity = preferences[Keys.VirtualPadOpacity] ?: 0.7f,
             virtualPadScale = preferences[Keys.VirtualPadScale] ?: 1.0f,
             controlMode = preferences[Keys.ControlMode]?.let { ControlMode.valueOf(it) } ?: ControlMode.VirtualPad,
@@ -37,6 +46,7 @@ class UserSettingsStore(private val context: Context) {
             preferences[Keys.FilterEnabled] = settings.filterEnabled
             preferences[Keys.AudioEnabled] = settings.audioEnabled
             preferences[Keys.Volume] = settings.volume.coerceIn(0f, 1f)
+            preferences[Keys.VirtualPadVisibility] = settings.virtualPadVisibility.name
             preferences[Keys.VirtualPadVisible] = settings.virtualPadVisible
             preferences[Keys.VirtualPadOpacity] = settings.virtualPadOpacity.coerceIn(0.1f, 1f)
             preferences[Keys.VirtualPadScale] = settings.virtualPadScale.coerceIn(0.5f, 2f)
@@ -52,6 +62,7 @@ class UserSettingsStore(private val context: Context) {
         val FilterEnabled = booleanPreferencesKey("filter_enabled")
         val AudioEnabled = booleanPreferencesKey("audio_enabled")
         val Volume = floatPreferencesKey("volume")
+        val VirtualPadVisibility = stringPreferencesKey("virtual_pad_visibility")
         val VirtualPadVisible = booleanPreferencesKey("virtual_pad_visible")
         val VirtualPadOpacity = floatPreferencesKey("virtual_pad_opacity")
         val VirtualPadScale = floatPreferencesKey("virtual_pad_scale")

@@ -14,6 +14,7 @@ class UserSettingsTest {
         assertFalse(settings.filterEnabled)
         assertTrue(settings.audioEnabled)
         assertEquals(0.8f, settings.volume)
+        assertEquals(VirtualPadVisibility.Visible, settings.virtualPadVisibility)
         assertTrue(settings.virtualPadVisible)
         assertEquals(0.7f, settings.virtualPadOpacity)
         assertEquals(1.0f, settings.virtualPadScale)

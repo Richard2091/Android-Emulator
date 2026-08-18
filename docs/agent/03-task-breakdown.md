@@ -207,7 +207,7 @@
 - 显示方向键
 - 显示 A、B、Start、Select
 - 按下和松开分别发出 pressed true/false
-- 可通过 `UserSettings.virtualPadVisible` 控制显示
+- 可通过 `UserSettings.virtualPadVisibility` 控制显示方式
 
 验证命令：
 
@@ -403,7 +403,7 @@
 - 可调整画面比例
 - 可调整滤镜开关
 - 可调整声音开关和音量
-- 可调整虚拟按键显示、透明度、大小
+- 可调整虚拟按键显示方式、透明度、大小
 - 可调整虚拟按键位置
 - 可调整手柄连接时是否隐藏虚拟按键
 - 设置变更写入 DataStore

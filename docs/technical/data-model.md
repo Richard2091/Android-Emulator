@@ -111,7 +111,7 @@ data class UserSettings(
     val filterEnabled: Boolean = false,
     val audioEnabled: Boolean = true,
     val volume: Float = 0.8f,
-    val virtualPadVisible: Boolean = true,
+    val virtualPadVisibility: VirtualPadVisibility = VirtualPadVisibility.Visible,
     val virtualPadOpacity: Float = 0.7f,
     val virtualPadScale: Float = 1.0f,
     val virtualPadLayout: VirtualPadLayout = VirtualPadLayout.Default,
@@ -132,6 +132,11 @@ enum class VirtualPadLayout {
     Default,
 }
 
+enum class VirtualPadVisibility {
+    Visible,
+    AutoHide,
+}
+
 enum class ControlMode {
     VirtualPad,
     Gamepad,
@@ -144,7 +149,7 @@ DataStore key：
 - `filter_enabled`
 - `audio_enabled`
 - `volume`
-- `virtual_pad_visible`
+- `virtual_pad_visibility`
 - `virtual_pad_opacity`
 - `virtual_pad_scale`
 - `virtual_pad_layout`

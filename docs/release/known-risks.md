@@ -20,8 +20,18 @@
 - 记录所用 core 名称、版本、来源、许可证。
 - 记录 `libretro.h` 来源、版本或 commit、许可证。
 - 默认候选 core 为 FCEUmm libretro Android core；实际采用前必须核对许可证文本和 Android ABI 支持。
-- 第一版只做个人研究和本地验证。
 - 公开分发前重新审查许可证。
+
+## Release 签名风险
+
+风险：release keystore、密码或签名配置被提交到仓库，或者公开发布使用了临时签名材料。
+
+控制方式：
+
+- 签名文件放在 git 外部目录。
+- 签名口径通过 `local.properties` 或环境变量注入。
+- release APK 产物只在本地生成，不提交签名材料。
+- 发布前重新检查 GitHub Release 资产和 APK 内容。
 
 ### 已采用 core 记录（2026-08）
 
