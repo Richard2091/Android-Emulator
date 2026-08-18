@@ -2,11 +2,16 @@ package com.richard.retrohall
 
 import android.content.Context
 import androidx.room.Room
+import com.richard.retrohall.data.cache.CacheManager
 import com.richard.retrohall.data.db.RetroHallDatabase
 import com.richard.retrohall.data.assets.PrivateAssetInitializer
 import com.richard.retrohall.data.game.GitHubGameCatalogClient
+import com.richard.retrohall.data.game.CoverDownloader
 import com.richard.retrohall.data.game.GameRepository
+import com.richard.retrohall.data.game.HasheousGameMetadataClient
 import com.richard.retrohall.data.game.RomDownloadManager
+import com.richard.retrohall.data.game.ZhMetadataClient
+import com.richard.retrohall.data.save.SaveStateRepository
 import com.richard.retrohall.data.settings.UserSettingsStore
 import com.richard.retrohall.emulator.EmulatorSessionFactory
 
@@ -20,13 +25,21 @@ class RetroHallDependencies private constructor(context: Context) {
         appContext,
         RetroHallDatabase::class.java,
         "retrohall.db",
-    ).build()
+    ).fallbackToDestructiveMigration(dropAllTables = true).build()
 
-    val gameRepository: GameRepository = GameRepository(database.localGameDao(), GitHubGameCatalogClient())
+    val gameRepository: GameRepository = GameRepository(
+        database.localGameDao(),
+        GitHubGameCatalogClient(),
+        HasheousGameMetadataClient(appContext),
+        ZhMetadataClient(),
+    )
     val romDownloadManager: RomDownloadManager = RomDownloadManager(appContext)
+    val coverDownloader: CoverDownloader = CoverDownloader(appContext)
+    val saveStateRepository: SaveStateRepository = SaveStateRepository(appContext, database.saveStateDao())
     val emulatorSessionFactory: EmulatorSessionFactory = EmulatorSessionFactory(appContext)
     val userSettingsStore: UserSettingsStore = UserSettingsStore(appContext)
     val privateAssetInitializer: PrivateAssetInitializer = PrivateAssetInitializer(appContext, database.localGameDao())
+    val cacheManager: CacheManager = CacheManager(appContext)
 
     companion object {
         @Volatile

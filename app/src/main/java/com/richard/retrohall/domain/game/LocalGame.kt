@@ -10,4 +10,9 @@ data class LocalGame(
     val favorite: Boolean = false,
     val lastPlayedAt: Long? = null,
     val totalPlayTimeMillis: Long = 0L,
+    val description: String = "",
+    val romMd5: String = "",
+    val romSha1: String = "",
+    val romCrc32: String = "",
+    val hotness: Double? = null,
 )

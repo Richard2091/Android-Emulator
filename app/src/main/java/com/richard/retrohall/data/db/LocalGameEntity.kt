@@ -15,6 +15,11 @@ data class LocalGameEntity(
     val favorite: Boolean,
     val lastPlayedAt: Long?,
     val totalPlayTimeMillis: Long,
+    val description: String = "",
+    val romMd5: String = "",
+    val romSha1: String = "",
+    val romCrc32: String = "",
+    val hotness: Double? = null,
 ) {
     fun toDomain(): LocalGame = LocalGame(
         id = id,
@@ -26,6 +31,11 @@ data class LocalGameEntity(
         favorite = favorite,
         lastPlayedAt = lastPlayedAt,
         totalPlayTimeMillis = totalPlayTimeMillis,
+        description = description,
+        romMd5 = romMd5,
+        romSha1 = romSha1,
+        romCrc32 = romCrc32,
+        hotness = hotness,
     )
 }
 
@@ -39,4 +49,9 @@ fun LocalGame.toEntity(): LocalGameEntity = LocalGameEntity(
     favorite = favorite,
     lastPlayedAt = lastPlayedAt,
     totalPlayTimeMillis = totalPlayTimeMillis,
+    description = description,
+    romMd5 = romMd5,
+    romSha1 = romSha1,
+    romCrc32 = romCrc32,
+    hotness = hotness,
 )

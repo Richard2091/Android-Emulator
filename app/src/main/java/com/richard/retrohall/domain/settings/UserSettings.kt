@@ -9,6 +9,7 @@ data class UserSettings(
     val virtualPadOpacity: Float = 0.7f,
     val virtualPadScale: Float = 1.0f,
     val virtualPadLayout: VirtualPadLayout = VirtualPadLayout.Default,
+    val controlMode: ControlMode = ControlMode.VirtualPad,
     val hideVirtualPadWhenGamepadConnected: Boolean = true,
     val autoSaveStateEnabled: Boolean = true,
 )
@@ -21,4 +22,9 @@ enum class AspectRatio {
 
 enum class VirtualPadLayout {
     Default,
+}
+
+enum class ControlMode {
+    VirtualPad,
+    Gamepad,
 }

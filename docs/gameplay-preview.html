@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>游玩页面交互验收预览 v3 - Retro Hall</title>
+<style>
+  :root {
+    --bg: #071013;
+    --panel: #0B171B;
+    --panel-soft: #101D22;
+    --text: #F2FBFC;
+    --muted: #8DA5AA;
+    --cyan: #35F1DD;
+    --blue: #1AAEF0;
+    --gold: #FFE36E;
+    --line: rgba(218,241,244,0.23);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #031012;
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 36px;
+  }
+  h1 { font-size: 15px; color: var(--muted); margin-bottom: 16px; letter-spacing: 2px; }
+
+  /* ===== 手机边框（横屏 21:9）===== */
+  .phone {
+    width: 980px;
+    height: 420px;
+    background: linear-gradient(160deg, #232a2e 0%, #0d1214 45%, #1a2024 100%);
+    border-radius: 34px;
+    padding: 13px;
+    box-shadow: 0 0 0 2px #3a444a, 0 24px 60px rgba(0,0,0,0.7), inset 0 1px 1px rgba(255,255,255,0.06);
+    position: relative;
+  }
+  .phone::after { content: ""; position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: 210px; height: 8px; background: #0a0d0f; border-radius: 6px; }
+  .screen { width: 100%; height: 100%; background: var(--bg); border-radius: 24px; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+
+  /* 暂停全屏水印（弹窗背后的画面区） */
+  .pause-watermark {
+    position: absolute; inset: 0; z-index: 10;
+    display: none; align-items: center; justify-content: center;
+    font-size: 52px; font-weight: 900; letter-spacing: 12px;
+    color: rgba(242,251,252,0.32);
+    text-shadow: 0 3px 14px rgba(0,0,0,0.45);
+    pointer-events: none;
+    transform: rotate(-8deg);
+  }
+  .pause-watermark.show { display: flex; }
+
+  /* ===== 主区 ===== */
+  .stage { flex: 1; display: flex; align-items: stretch; gap: 12px; padding: 2px 12px 6px; min-height: 0; }
+  .side-col { width: 176px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 6px 0; }
+  .sst-btn.danger:hover { border-color: #ff6b49; background: rgba(255,107,73,0.14); }
+
+  /* 方向键 */
+  /* 方向键：三种造型（圆形十字/一体十字/摇杆，SVG 立体底座） */
+  .dpad { position: relative; width: 156px; height: 156px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 4px; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.5)); opacity: 0.85; margin-top: 53px; touch-action: none; }
+  .dpad .pad-bg { display: none; position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; overflow: visible; }
+  .dpad.mode-circle .pad-bg.circle-bg,
+  .dpad.mode-plus .pad-bg.plus-bg,
+  .dpad.mode-joy .pad-bg.joy-bg { display: block; }
+  .dpad button { position: relative; z-index: 2; background: transparent; border: none; color: transparent; font-size: 15px; font-weight: 900; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 10px; user-select: none; touch-action: none; }
+  .dpad button.pressed { background: rgba(53,241,221,0.10); }
+  .dpad .blank { background: transparent; border: none; cursor: default; }
+  .dpad svg path[data-arm].zone { fill: transparent; }
+  .dpad svg path[data-arm] { transition: fill-opacity 0.1s; }
+  .dpad svg path[data-arm].lit { fill: var(--cyan); fill-opacity: 0.55; filter: drop-shadow(0 0 8px rgba(53,241,221,0.85)); }
+  .dpad svg path[data-arm].zone.lit { fill: url(#zoneGrad); fill-opacity: 1; filter: blur(1.5px); }
+  .joy-head { display: none; position: absolute; z-index: 3; left: 50%; top: 50%; width: 56px; height: 56px; border-radius: 50%; transform: translate(-50%, -50%); background: radial-gradient(circle at 34% 30%, #2e454d, #0f191d 74%); border: 2px solid var(--cyan); box-shadow: 0 6px 14px rgba(0,0,0,0.55), inset 0 -5px 9px rgba(0,0,0,0.35); transition: transform 0.08s; touch-action: none; cursor: grab; }
+  .dpad.mode-joy .joy-head { display: block; }
+  .dpad.mode-joy .joy-head.dragging { transition: none; cursor: grabbing; box-shadow: 0 4px 10px rgba(0,0,0,0.5), inset 0 -3px 7px rgba(0,0,0,0.4); }
+  .dpad.mode-joy button, .dpad.mode-joy .blank { pointer-events: none; }
+
+  /* ABXY 菱形键组 */
+  .abxy { width: 176px; height: 176px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 5px; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.5)); opacity: 0.85; margin-top: 43px; }
+  .abxy button { border-radius: 50%; border: 2px solid var(--cyan); background: radial-gradient(circle at 34% 30%, rgba(53,241,221,0.18), rgba(16,29,34,0.95) 70%); color: var(--text); font-size: 21px; font-weight: 900; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 14px rgba(0,0,0,0.5); transition: transform 0.06s, background 0.12s; user-select: none; touch-action: none; }
+  .abxy button.pressed { transform: scale(0.9); }
+  .abxy button.x { border-color: var(--blue); }
+  .abxy button.x.pressed { background: rgba(26,174,240,0.45); }
+  .abxy button.y { border-color: #C8B6FF; }
+  .abxy button.y.pressed { background: rgba(200,182,255,0.40); }
+  .abxy button.b { border-color: var(--gold); }
+  .abxy button.b.pressed { background: rgba(255,227,110,0.40); }
+  .abxy button.a { border-color: var(--cyan); }
+  .abxy button.a.pressed { background: rgba(53,241,221,0.40); }
+  .abxy .blank { background: transparent; border: none; cursor: default; box-shadow: none; }
+
+  /* 选择 / 开始 */
+  .sst-row { display: flex; gap: 10px; }
+  .sst-btn { width: 64px; height: 32px; border-radius: 17px; border: 1.5px solid var(--line); background: rgba(16,29,34,0.9); color: var(--muted); font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; user-select: none; touch-action: none; }
+  .sst-btn:active { background: rgba(53,241,221,0.25); color: var(--text); transform: scale(0.95); }
+  .sst-btn.pressed { background: rgba(53,241,221,0.25); color: var(--text); transform: scale(0.95); }
+  .sel-btn.pressed { background: rgba(53,241,221,0.3); color: var(--text); transform: scale(0.92); }
+
+  /* 画面 */
+  .viewer { flex: 1; background: #000; border: 2px solid var(--line); border-radius: 10px; position: relative; overflow: hidden; display: flex; min-height: 0; }
+  .viewer .ratio-box { position: relative; margin: auto; height: 100%; aspect-ratio: 4 / 3; max-width: 100%; overflow: hidden; }
+  .viewer.fullscreen .ratio-box { height: 100%; width: 100%; aspect-ratio: auto; }
+  .viewer .ratio-box canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+  /* Overlay */
+  .overlay { position: absolute; inset: 0; background: rgba(3,10,12,0.55); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 20; }
+  .overlay.show { display: flex; }
+  .panel { width: 480px; max-height: 100%; overflow-y: auto; background: rgba(11,23,27,0.97); border: 2px solid var(--cyan); border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 18px 40px rgba(0,0,0,0.6); }
+  .panel::-webkit-scrollbar { width: 6px; }
+  .panel::-webkit-scrollbar-thumb { background: rgba(53,241,221,0.25); border-radius: 3px; }
+  .panel h2 { text-align: center; font-size: 20px; font-weight: 900; color: var(--text); margin-bottom: 4px; }
+  .setrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid rgba(218,241,244,0.12); }
+  .setrow .label { font-size: 13px; color: var(--text); opacity: 0.84; font-weight: 700; white-space: nowrap; }
+  .seg { display: flex; gap: 6px; }
+  .seg button { flex: 1; min-width: 76px; font-size: 12px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: rgba(16,29,34,0.9); color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .seg button:hover { color: var(--text); border-color: var(--cyan); }
+  .seg button.on { background: var(--cyan); color: #031112; border-color: var(--cyan); }
+  .panel button { background: rgba(16,29,34,0.9); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 9px 0; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.12s, border-color 0.12s; }
+  .panel button:hover { background: rgba(53,241,221,0.16); border-color: var(--cyan); }
+  .panel button.primary { background: var(--cyan); color: #031112; border-color: var(--cyan); }
+  .panel button.danger:hover { border-color: #ff6b49; background: rgba(255,107,73,0.16); }
+  .panel .section { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
+  .ratio-opts { display: flex; gap: 8px; }
+  .ratio-opts button { flex: 1; font-size: 12px; padding: 9px 0; }
+  .ratio-opts button.on { background: var(--cyan); color: #031112; border-color: var(--cyan); }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.7; }
+
+  /* ===== 手机下方：操作日志 + 快捷键 ===== */
+  .console {
+    margin-top: 18px;
+    width: 980px;
+    background: var(--panel);
+    border: 1.5px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 16px;
+  }
+  .console .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .console .head h2 { font-size: 13px; font-weight: 800; color: var(--cyan); letter-spacing: 1px; }
+  .console .head button { background: var(--panel-soft); border: 1px solid var(--line); color: var(--muted); border-radius: 8px; padding: 4px 12px; font-size: 11px; cursor: pointer; }
+  .console .head button:hover { color: var(--text); border-color: var(--cyan); }
+  .log { height: 108px; overflow-y: auto; font-size: 12px; color: var(--muted); line-height: 1.8; font-family: "SF Mono", Consolas, monospace; }
+  .log .row b { color: var(--text); font-weight: 600; }
+  .log .row .t { color: var(--muted); opacity: 0.6; margin-right: 8px; }
+  .log .row .act { color: var(--cyan); font-weight: 700; }
+
+  .shortcuts { margin-top: 12px; display: flex; gap: 18px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+  .shortcuts b { color: var(--cyan); }
+</style>
+</head>
+<body>
+  <h1>Retro Hall · 游玩页面 交互验收预览 v3</h1>
+
+  <div class="phone">
+    <div class="screen">
+      <div class="pause-watermark" id="pauseWatermark">已暂停</div>
+      <div class="stage">
+        <!-- 左列 -->
+        <div class="side-col">
+          <div class="dpad mode-circle" id="dpad">
+            <svg class="pad-bg circle-bg" viewBox="0 0 100 100">
+              <defs>
+                <radialGradient id="bg1" cx="50%" cy="42%" r="72%">
+                  <stop offset="0%" stop-color="#22343b"/><stop offset="100%" stop-color="#0b1215"/>
+                </radialGradient>
+                <linearGradient id="armg" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#2c4149"/><stop offset="100%" stop-color="#141f24"/>
+                </linearGradient>
+              </defs>
+              <circle cx="50" cy="50" r="48" fill="url(#bg1)" stroke="rgba(218,241,244,0.25)" stroke-width="1.5"/>
+              <path data-arm="up" d="M37 16 h26 a4 4 0 0 1 4 4 v22 a4 4 0 0 1 -4 4 h-26 a4 4 0 0 1 -4 -4 v-22 a4 4 0 0 1 4 -4 z" fill="url(#armg)" stroke="rgba(53,241,221,0.30)" stroke-width="1"/>
+              <path data-arm="down" d="M37 54 h26 a4 4 0 0 1 4 4 v22 a4 4 0 0 1 -4 4 h-26 a4 4 0 0 1 -4 -4 v-22 a4 4 0 0 1 4 -4 z" fill="url(#armg)" stroke="rgba(53,241,221,0.30)" stroke-width="1"/>
+              <path data-arm="left" d="M16 37 h22 a4 4 0 0 1 4 4 v26 a4 4 0 0 1 -4 4 h-22 a4 4 0 0 1 -4 -4 v-26 a4 4 0 0 1 4 -4 z" fill="url(#armg)" stroke="rgba(53,241,221,0.30)" stroke-width="1"/>
+              <path data-arm="right" d="M54 37 h22 a4 4 0 0 1 4 4 v26 a4 4 0 0 1 -4 4 h-22 a4 4 0 0 1 -4 -4 v-26 a4 4 0 0 1 4 -4 z" fill="url(#armg)" stroke="rgba(53,241,221,0.30)" stroke-width="1"/>
+              <circle cx="50" cy="50" r="9" fill="#0a1215" stroke="rgba(218,241,244,0.18)" stroke-width="1"/>
+            </svg>
+            <svg class="pad-bg plus-bg" viewBox="0 0 100 100">
+              <defs>
+                <linearGradient id="armg2" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#2c4149"/><stop offset="100%" stop-color="#141f24"/>
+                </linearGradient>
+              </defs>
+              <path data-arm="up" d="M37 8 h26 a5 5 0 0 1 5 5 v31 a5 5 0 0 1 -5 5 h-26 a5 5 0 0 1 -5 -5 v-31 a5 5 0 0 1 5 -5 z" fill="url(#armg2)" stroke="rgba(53,241,221,0.40)" stroke-width="1.5"/>
+              <path data-arm="down" d="M37 51 h26 a5 5 0 0 1 5 5 v31 a5 5 0 0 1 -5 5 h-26 a5 5 0 0 1 -5 -5 v-31 a5 5 0 0 1 5 -5 z" fill="url(#armg2)" stroke="rgba(53,241,221,0.40)" stroke-width="1.5"/>
+              <path data-arm="left" d="M8 37 h31 a5 5 0 0 1 5 5 v26 a5 5 0 0 1 -5 5 h-31 a5 5 0 0 1 -5 -5 v-26 a5 5 0 0 1 5 -5 z" fill="url(#armg2)" stroke="rgba(53,241,221,0.40)" stroke-width="1.5"/>
+              <path data-arm="right" d="M51 37 h31 a5 5 0 0 1 5 5 v26 a5 5 0 0 1 -5 5 h-31 a5 5 0 0 1 -5 -5 v-26 a5 5 0 0 1 5 -5 z" fill="url(#armg2)" stroke="rgba(53,241,221,0.40)" stroke-width="1.5"/>
+              <circle cx="50" cy="50" r="8" fill="#0a1215" stroke="rgba(218,241,244,0.18)" stroke-width="1"/>
+            </svg>
+            <svg class="pad-bg joy-bg" viewBox="0 0 100 100">
+              <defs>
+                <radialGradient id="bg2" cx="50%" cy="42%" r="72%">
+                  <stop offset="0%" stop-color="#22343b"/><stop offset="100%" stop-color="#0b1215"/>
+                </radialGradient>
+                <radialGradient id="zoneGrad" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#35F1DD" stop-opacity="0.55"/>
+                  <stop offset="78%" stop-color="#35F1DD" stop-opacity="0.55"/>
+                  <stop offset="100%" stop-color="#35F1DD" stop-opacity="0"/>
+                </radialGradient>
+              </defs>
+              <circle cx="50" cy="50" r="48" fill="url(#bg2)" stroke="rgba(218,241,244,0.25)" stroke-width="1.5"/>
+              <path data-arm="up" class="zone" d="M50 50 L18.2 18.2 A45 45 0 0 1 81.8 18.2 Z"/>
+              <path data-arm="right" class="zone" d="M50 50 L81.8 18.2 A45 45 0 0 1 81.8 81.8 Z"/>
+              <path data-arm="down" class="zone" d="M50 50 L81.8 81.8 A45 45 0 0 1 18.2 81.8 Z"/>
+              <path data-arm="left" class="zone" d="M50 50 L18.2 81.8 A45 45 0 0 1 18.2 18.2 Z"/>
+              <circle cx="50" cy="50" r="30" fill="none" stroke="rgba(53,241,221,0.16)" stroke-width="1" stroke-dasharray="3 3"/>
+            </svg>
+            <div class="joy-head" id="joyHead"></div>
+            <button id="kUpLeft" data-act="左上"></button><button id="kUp" data-act="上"></button><button id="kUpRight" data-act="右上"></button>
+            <button id="kLeft" data-act="左"></button><span class="blank"></span><button id="kRight" data-act="右"></button>
+            <button id="kDownLeft" data-act="左下"></button><button id="kDown" data-act="下"></button><button id="kDownRight" data-act="右下"></button>
+          </div>
+          <div class="sst-row">
+            <button class="sst-btn" onclick="openSettings()">设置</button>
+            <button class="sst-btn danger" onclick="exitGame()">退出</button>
+          </div>
+        </div>
+
+        <!-- 画面 -->
+        <div class="viewer" id="viewer">
+          <div class="ratio-box" id="ratioBox"><canvas id="frame" width="256" height="224"></canvas></div>
+        </div>
+
+        <!-- 右列 -->
+        <div class="side-col">
+          <div class="abxy">
+            <span class="blank"></span><button id="kX" data-act="X" class="x">X</button><span class="blank"></span>
+            <button id="kY" data-act="Y" class="y">Y</button><span class="blank"></span><button id="kB" data-act="B" class="b">B</button>
+            <span class="blank"></span><button id="kA" data-act="A" class="a">A</button><span class="blank"></span>
+          </div>
+          <div class="sst-row">
+            <button class="sst-btn" id="kSel" data-act="选择">选择</button>
+            <button class="sst-btn" id="kStart" data-act="开始">开始</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 设置（打开即暂停，左右行布局） -->
+      <div class="overlay" id="settingsOverlay">
+        <div class="panel">
+          <h2>设置</h2>
+          <button class="primary" onclick="resume()">继续游戏</button>
+          <div class="section">
+            <div class="setrow">
+              <span class="label">方向键样式</span>
+              <div class="seg" id="padOpts">
+                <button id="optPadCircle" class="on" onclick="setPadStyle('circle')">圆形十字</button>
+                <button id="optPadPlus" onclick="setPadStyle('plus')">一体十字</button>
+                <button id="optPadJoy" onclick="setPadStyle('joy')">摇杆</button>
+              </div>
+            </div>
+            <div class="setrow">
+              <span class="label">画面比例</span>
+              <div class="seg">
+                <button id="optDefault" class="on" onclick="setRatio('default')">默认</button>
+                <button id="optFullscreen" onclick="setRatio('fullscreen')">全屏</button>
+              </div>
+            </div>
+            <div class="setrow">
+              <span class="label">即时存档</span>
+              <div class="seg">
+                <button onclick="log('保存即时存档 → 手动槽 1');">保存</button>
+                <button onclick="log('读取即时存档 ← 手动槽 1');">读取</button>
+              </div>
+            </div>
+            <div class="setrow">
+              <span class="label">重置游戏</span>
+              <div class="seg"><button onclick="log('游戏已重置');">重置</button></div>
+            </div>
+          </div>
+          <button class="danger" onclick="exitGame()">退出到大厅</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="console">
+    <div class="head">
+      <h2>交互操作日志</h2>
+      <button onclick="clearLog()">清空</button>
+    </div>
+    <div class="log" id="logBox"></div>
+  </div>
+  <div class="shortcuts">
+    <span><b>键盘：</b>方向键移动 · <b>A</b>/<b>B</b>/<b>X</b>/<b>Y</b> · <b>Enter</b>=开始 · <b>Shift</b>=选择 · <b>Esc</b>=关闭面板/继续游戏</span>
+  </div>
+
+<script>
+  const cv = document.getElementById('frame');
+  const ctx = cv.getContext('2d');
+  const viewer = document.getElementById('viewer');
+  let paused = false, ratio = 'default';
+  let px = 118, py = 132, vy = 0, onGround = true;
+  let moveX = 0, moveY = 0;
+
+  /* ---------- 画面绘制 ---------- */
+  function drawPixel(t) {
+    ctx.clearRect(0, 0, 256, 224);
+    ctx.fillStyle = '#101828'; ctx.fillRect(0, 0, 256, 224);
+    for (let i = 0; i < 3; i++) {
+      const x = ((t * (8 + i * 5)) % 296) - 20;
+      ctx.fillStyle = 'rgba(53,241,221,0.10)';
+      ctx.fillRect(x, 30 + i * 20, 30, 7);
+      ctx.fillRect(x + 6, 25 + i * 20, 18, 7);
+    }
+    ctx.fillStyle = '#20301f'; ctx.fillRect(0, 176, 256, 48);
+    ctx.fillStyle = '#2c4229'; ctx.fillRect(0, 176, 256, 8);
+    ctx.fillStyle = '#8a5a2b';
+    for (let i = 0; i < 3; i++) ctx.fillRect(40 + i * 74, 140, 56, 7);
+    ctx.fillStyle = 'rgba(7,16,19,0.14)';
+    for (let y = 0; y < 224; y += 6) ctx.fillRect(0, y, 256, 2);
+
+    /* 角色（受方向键/跳跃控制） */
+    px += moveX * 1.6;
+    px = Math.max(6, Math.min(240, px));
+    // 平台碰撞：站在平台 1/2/3 上
+    const platforms = [{x:40,y:140},{x:114,y:140},{x:188,y:140}];
+    let stand = 200;
+    for (const p of platforms) { if (px + 5 >= p.x - 4 && px + 5 <= p.x + 52) { if (py + 16 >= p.y && py + 16 <= p.y + 12) stand = Math.min(stand, p.y - 16); } }
+    const floorY = 200;
+    vy += 0.5;
+    py += vy;
+    if (py + 16 >= floorY) { py = floorY - 16; vy = 0; onGround = true; }
+    else if (py + 16 >= stand && py + 16 <= stand + 20 && vy > 0) { py = stand - 16; vy = 0; onGround = true; }
+    // 角色
+    ctx.fillStyle = '#e04040'; ctx.fillRect(px, py + 10, 10, 10);
+    ctx.fillStyle = '#2a7ad8'; ctx.fillRect(px, py, 10, 10);
+    ctx.fillStyle = '#f2fbfc'; ctx.fillRect(px + 6, py + 2, 2, 2);
+  }
+  function loop(now) {
+    if (!paused) drawPixel(now);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  /* ---------- 输入：按下/释放 ---------- */
+  const axisX = { neg: 0, pos: 0 };
+  const axisY = { neg: 0, pos: 0 };
+  function applyAxis() {
+    moveX = (axisX.pos > 0 ? 1 : 0) - (axisX.neg > 0 ? 1 : 0);
+    moveY = (axisY.pos > 0 ? 1 : 0) - (axisY.neg > 0 ? 1 : 0);
+    paintArms();
+  }
+  function armEls(n) { return document.querySelectorAll('#dpad [data-arm="' + n + '"]'); }
+  function paintArms() {
+    document.querySelectorAll('#dpad [data-arm]').forEach(a => a.classList.remove('lit'));
+    if (axisX.neg > 0) armEls('left').forEach(a => a.classList.add('lit'));
+    if (axisX.pos > 0) armEls('right').forEach(a => a.classList.add('lit'));
+    if (axisY.neg > 0) armEls('up').forEach(a => a.classList.add('lit'));
+    if (axisY.pos > 0) armEls('down').forEach(a => a.classList.add('lit'));
+  }
+
+  /* 摇杆拖拽（支持点击定位到触摸点后继续拖动） */
+  const dpadEl = document.getElementById('dpad');
+  const joyHeadEl = document.getElementById('joyHead');
+  let joyDrag = false;
+  function joyMove(e) {
+    const rect = dpadEl.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    let dx = e.clientX - cx, dy = e.clientY - cy;
+    const len = Math.hypot(dx, dy);
+    const max = rect.width / 2 - 26;
+    if (len > max) { dx = dx / len * max; dy = dy / len * max; }
+    joyHeadEl.style.transform = 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px))';
+    axisX.neg = 0; axisX.pos = 0; axisY.neg = 0; axisY.pos = 0;
+    if (len >= 6) {
+      const oct = Math.round(Math.atan2(dy, dx) * 180 / Math.PI / 45);
+      const m = { 0: 'R', 1: 'RD', 2: 'D', 3: 'LD', 4: 'L', '-4': 'L', '-3': 'LU', '-2': 'U', '-1': 'RU' }[oct] || '';
+      if (m.includes('L')) axisX.neg = 1;
+      if (m.includes('R')) axisX.pos = 1;
+      if (m.includes('U')) axisY.neg = 1;
+      if (m.includes('D')) axisY.pos = 1;
+    }
+    applyAxis();
+  }
+  function joyRelease() {
+    joyDrag = false;
+    joyHeadEl.classList.remove('dragging');
+    joyHeadEl.style.transform = '';
+    axisX.neg = 0; axisX.pos = 0; axisY.neg = 0; axisY.pos = 0;
+    applyAxis();
+  }
+  dpadEl.addEventListener('pointerdown', e => {
+    if (!dpadEl.classList.contains('mode-joy')) return;
+    joyDrag = true;
+    dpadEl.setPointerCapture(e.pointerId);
+    joyHeadEl.classList.add('dragging');
+    e.preventDefault();
+    joyMove(e);
+  });
+  dpadEl.addEventListener('pointermove', e => { if (joyDrag) joyMove(e); });
+  dpadEl.addEventListener('pointerup', joyRelease);
+  dpadEl.addEventListener('pointercancel', joyRelease);
+  function press(el, act) {
+    el.classList.add('pressed');
+    if (act.includes('上')) axisY.neg++;
+    if (act.includes('下')) axisY.pos++;
+    if (act.includes('左')) axisX.neg++;
+    if (act.includes('右')) axisX.pos++;
+    applyAxis();
+    if (act === 'A') { if (onGround) { vy = -11; onGround = false; } }
+    if (act === 'B') log('按 B：攻击');
+    if (act === 'X') log('按 X：加速');
+    if (act === 'Y') log('按 Y：使用道具');
+    if (act === '开始') log('按 开始：进入游戏');
+    if (act === '选择') log('按 选择：切换选项');
+    logKey(act, '按下');
+  }
+  function release(el, act) {
+    el.classList.remove('pressed');
+    if (act.includes('上')) axisY.neg = Math.max(0, axisY.neg - 1);
+    if (act.includes('下')) axisY.pos = Math.max(0, axisY.pos - 1);
+    if (act.includes('左')) axisX.neg = Math.max(0, axisX.neg - 1);
+    if (act.includes('右')) axisX.pos = Math.max(0, axisX.pos - 1);
+    applyAxis();
+    logKey(act, '松开');
+  }
+  function bindHold(id, act) {
+    const el = document.getElementById(id);
+    el.addEventListener('pointerdown', e => { e.preventDefault(); press(el, act); });
+    el.addEventListener('pointerup', e => { e.preventDefault(); release(el, act); });
+    el.addEventListener('pointercancel', () => release(el, act));
+    el.addEventListener('pointerleave', () => { if (el.classList.contains('pressed')) release(el, act); });
+  }
+  bindHold('kUp', '上'); bindHold('kDown', '下'); bindHold('kLeft', '左'); bindHold('kRight', '右');
+  bindHold('kUpLeft', '左上'); bindHold('kUpRight', '右上'); bindHold('kDownLeft', '左下'); bindHold('kDownRight', '右下');
+  bindHold('kA', 'A'); bindHold('kB', 'B'); bindHold('kX', 'X'); bindHold('kY', 'Y');
+  bindHold('kSel', '选择'); bindHold('kStart', '开始');
+
+  /* ---------- 键盘 ---------- */
+  document.addEventListener('keydown', e => {
+    const map = { ArrowUp: ['kUp','上'], ArrowDown: ['kDown','下'], ArrowLeft: ['kLeft','左'], ArrowRight: ['kRight','右'],
+                  a: ['kA','A'], b: ['kB','B'], x: ['kX','X'], y: ['kY','Y'], Enter: ['kStart','开始'], Shift: ['kSel','选择'] };
+    if (e.key === 'Escape') { closeAll(); resume(); return; }
+    const hit = map[e.key];
+    if (!hit) return;
+    e.preventDefault();
+    const el = document.getElementById(hit[0]);
+    if (!el.classList.contains('pressed')) press(el, hit[1]);
+  });
+  document.addEventListener('keyup', e => {
+    const map = { ArrowUp: ['kUp','上'], ArrowDown: ['kDown','下'], ArrowLeft: ['kLeft','左'], ArrowRight: ['kRight','右'],
+                  a: ['kA','A'], b: ['kB','B'], x: ['kX','X'], y: ['kY','Y'], Enter: ['kStart','开始'], Shift: ['kSel','选择'] };
+    const hit = map[e.key];
+    if (!hit) return;
+    const el = document.getElementById(hit[0]);
+    if (el.classList.contains('pressed')) release(el, hit[1]);
+  });
+
+  /* ---------- 日志 ---------- */
+  const logBox = document.getElementById('logBox');
+  function logKey(act, dir) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    row.innerHTML = `<span class="t">${t}</span><b>${act}</b> <span class="act">${dir}</span>`;
+    logBox.prepend(row);
+    while (logBox.children.length > 40) logBox.removeChild(logBox.lastChild);
+  }
+  function log(msg) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    row.innerHTML = `<span class="t">${t}</span><span class="act">▸</span> ${msg}`;
+    logBox.prepend(row);
+    while (logBox.children.length > 40) logBox.removeChild(logBox.lastChild);
+  }
+  function clearLog() { logBox.innerHTML = ''; }
+
+  /* ---------- 状态机 ---------- */
+  function setPaused(v) {
+    paused = v;
+    document.getElementById('pauseWatermark').classList.toggle('show', v);
+    if (v) log('游戏暂停'); else log('继续游戏');
+  }
+  function closeAll() { document.querySelectorAll('.overlay').forEach(o => o.classList.remove('show')); }
+  document.querySelectorAll('.overlay').forEach(o => {
+    o.addEventListener('click', e => { if (e.target === o) { closeAll(); resume(); } });
+  });
+  function resume() { closeAll(); setPaused(false); }
+  function openSettings() {
+    closeAll(); setPaused(true);
+    document.getElementById('settingsOverlay').classList.add('show');
+    log('打开设置（游戏已暂停）');
+  }
+  function exitGame() {
+    closeAll(); setPaused(false);
+    log('退出到大厅（结束会话，保存 SRAM）');
+    alert('（预览）已退出到大厅');
+  }
+  function setPadStyle(s) {
+    const d = document.getElementById('dpad');
+    d.classList.remove('mode-circle', 'mode-plus', 'mode-joy');
+    d.classList.add('mode-' + s);
+    document.querySelectorAll('#padOpts button').forEach(b => b.classList.remove('on'));
+    document.getElementById('optPad' + (s === 'circle' ? 'Circle' : s === 'plus' ? 'Plus' : 'Joy')).classList.add('on');
+    paintArms();
+    log('方向键 → ' + ({ circle: '圆形十字', plus: '一体十字', joy: '摇杆' })[s]);
+  }
+  function setRatio(r) {
+    ratio = r;
+    if (r === 'fullscreen') {
+      viewer.classList.add('fullscreen');
+      document.getElementById('optFullscreen').classList.add('on');
+      document.getElementById('optDefault').classList.remove('on');
+    } else {
+      viewer.classList.remove('fullscreen');
+      document.getElementById('optDefault').classList.add('on');
+      document.getElementById('optFullscreen').classList.remove('on');
+    }
+    log('画面比例 → ' + (r === 'fullscreen' ? '全屏' : '默认 4:3'));
+  }
+</script>
+</body>
+</html>

@@ -38,6 +38,35 @@ interface LocalGameDao {
     @Query("UPDATE local_games SET lastPlayedAt = :lastPlayedAt, totalPlayTimeMillis = totalPlayTimeMillis + :additionalMillis WHERE id = :gameId")
     suspend fun updatePlayStats(gameId: String, lastPlayedAt: Long, additionalMillis: Long)
 
+    @Query(
+        """
+        UPDATE local_games
+        SET title = :title,
+            platform = :platform,
+            category = :category,
+            coverPath = :coverPath,
+            description = :description,
+            romMd5 = :romMd5,
+            romSha1 = :romSha1,
+            romCrc32 = :romCrc32
+        WHERE id = :gameId
+        """,
+    )
+    suspend fun updateMetadata(
+        gameId: String,
+        title: String,
+        platform: String,
+        category: String,
+        coverPath: String,
+        description: String,
+        romMd5: String,
+        romSha1: String,
+        romCrc32: String,
+    )
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(games: List<LocalGameEntity>)
+
+    @Query("DELETE FROM local_games WHERE id = :gameId")
+    suspend fun deleteById(gameId: String)
 }

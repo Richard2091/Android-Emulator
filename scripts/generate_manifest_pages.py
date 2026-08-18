@@ -16,20 +16,49 @@ from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 
+SORT_ALIASES = {
+    "id": "id",
+    "name": "name",
+    "title": "name",
+    "hotness": "hotness",
+    "hot": "hotness",
+    "popularity": "hotness",
+    "popular": "hotness",
+    "releasedate": "releaseDate",
+    "date": "releaseDate",
+    "newest": "releaseDate",
+    "published": "releaseDate",
+}
+
+
+def parse_sort(value: str) -> str:
+    key = value.lower()
+    if key not in SORT_ALIASES:
+        raise argparse.ArgumentTypeError(f"unknown sort key: {value}")
+    return SORT_ALIASES[key]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--games-dir", default="games")
     parser.add_argument("--output-dir", default="public")
     parser.add_argument("--base-url", default="")
+    parser.add_argument(
+        "--sort",
+        default="id",
+        type=parse_sort,
+        help="生成时的默认排序：id / name / hotness / releaseDate（别名：title、hot、popularity、date、newest），默认 id",
+    )
     args = parser.parse_args()
 
     root = Path.cwd()
     games_dir = (root / args.games_dir).resolve()
     output_dir = (root / args.output_dir).resolve()
     base_url = args.base_url.rstrip("/")
+    sort = args.sort
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    games = load_games(games_dir=games_dir, output_dir=output_dir, base_url=base_url)
+    games = load_games(games_dir=games_dir, output_dir=output_dir, base_url=base_url, sort=sort)
 
     manifest = {
         "schemaVersion": 1,
@@ -49,6 +78,7 @@ def main() -> None:
         manifest=manifest,
         search_index=search_index,
         base_url=base_url,
+        sort=sort,
     )
 
     if games_dir.exists():
@@ -60,14 +90,14 @@ def main() -> None:
         shutil.copytree(games_dir, target_games_dir, ignore=shutil.ignore_patterns("game.json"))
 
 
-def load_games(games_dir: Path, output_dir: Path, base_url: str) -> list[dict[str, Any]]:
+def load_games(games_dir: Path, output_dir: Path, base_url: str, sort: str = "id") -> list[dict[str, Any]]:
     if not games_dir.exists():
         return []
 
     cover_cache: dict[str, str] = {}
     games: list[dict[str, Any]] = []
     for game_json in sorted(games_dir.glob("*/game.json")):
-        raw = json.loads(game_json.read_text(encoding="utf-8"))
+        raw = json.loads(game_json.read_text(encoding="utf-8-sig"))
         game_dir = game_json.parent
         slug = game_dir.name
         games.append(
@@ -80,7 +110,50 @@ def load_games(games_dir: Path, output_dir: Path, base_url: str) -> list[dict[st
                 cover_cache=cover_cache,
             ),
         )
-    return sorted(games, key=lambda item: item["id"])
+    games.sort(key=lambda item: sort_key(item, sort))
+    return games
+
+
+def sort_key(game: dict[str, Any], sort: str) -> tuple[int, Any]:
+    if sort == "name":
+        name = title_text(game.get("displayTitle") or game.get("title") or game.get("id")).casefold()
+        return 0, name
+    if sort == "hotness":
+        hot = parse_float(game.get("hotness"))
+        if hot is None:
+            return 1, 0.0
+        return 0, -hot
+    if sort == "releaseDate":
+        stamp = parse_date_stamp(game.get("releaseDate"))
+        if stamp is None:
+            return 1, 0.0
+        return 0, -stamp
+    return 0, str(game.get("id"))
+
+
+def parse_float(value: Any) -> float | None:
+    try:
+        if value is None or str(value).strip() == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_date_stamp(value: Any) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except ValueError:
+        pass
+    return parse_float(text)
 
 
 def normalize_game(
@@ -124,6 +197,8 @@ def normalize_game(
         "platform": raw.get("platform") or "FC/NES",
         "category": raw.get("category") or "在线游戏库",
         "description": description,
+        "hotness": parse_float(raw.get("hotness") or raw.get("popularity")),
+        "releaseDate": title_text(raw.get("releaseDate") or raw.get("publishedAt") or ""),
         "assets": {
             "coverUrl": cover_url,
             "screenshots": [
@@ -395,11 +470,24 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
     )
 
 
-def write_index_html(path: Path, manifest: dict[str, Any], search_index: dict[str, Any], base_url: str) -> None:
+def write_index_html(
+    path: Path,
+    manifest: dict[str, Any],
+    search_index: dict[str, Any],
+    base_url: str,
+    sort: str = "id",
+) -> None:
     games = manifest.get("games", [])
     generated_at = html.escape(str(manifest.get("generatedAt", "")))
     game_count = len(games)
     base_href = f"{base_url}/" if base_url else ""
+    sort_label = {
+        "id": "ID",
+        "name": "名称",
+        "hotness": "热度",
+        "releaseDate": "发布时间",
+    }.get(sort, "ID")
+    sort_js = {"name": "title", "hotness": "hotness", "releaseDate": "date"}.get(sort, "title")
 
     rows = []
     for game in games:
@@ -414,15 +502,32 @@ def write_index_html(path: Path, manifest: dict[str, Any], search_index: dict[st
             first_rom = roms[0]
             rom_url = title_text(first_rom.get("url") or first_rom.get("path") or "")
 
+        hotness = game.get("hotness")
+        if hotness is None:
+            hotness_value = ""
+            hotness_text = "—"
+        else:
+            hotness_value = f"{hotness:g}"
+            hotness_text = f"{hotness:g}"
+
+        release_text = title_text(game.get("releaseDate") or "")
+        date_value = ""
+        if release_text:
+            stamp = parse_date_stamp(release_text)
+            if stamp is not None:
+                date_value = f"{stamp:g}"
+
         cover_html = f'<a href="{html.escape(cover_url)}" target="_blank" rel="noreferrer">封面</a>' if cover_url else "无"
         rom_html = f'<a href="{html.escape(rom_url)}" target="_blank" rel="noreferrer">资源</a>' if rom_url else "无"
 
         rows.append(
             "<tr>"
-            f"<td>{title}</td>"
+            f'<td data-title="{html.escape(title_text(game.get("displayTitle") or game.get("title") or game.get("id"))).casefold()}" class="sortable-cell">{title}</td>'
             f"<td>{category}</td>"
             f"<td>{platform}</td>"
             f"<td>{description}</td>"
+            f'<td data-hotness="{hotness_value}" class="sortable-cell">{hotness_text}</td>'
+            f'<td data-date="{date_value}" class="sortable-cell">{html.escape(release_text) or "—"}</td>'
             f"<td>{cover_html}</td>"
             f"<td>{rom_html}</td>"
             "</tr>"
@@ -433,9 +538,48 @@ def write_index_html(path: Path, manifest: dict[str, Any], search_index: dict[st
     else:
         rows_html = (
             "<tr>"
-            '<td colspan="6" class="empty">当前没有可发布的游戏条目。把 `游戏目录` 下的 `game.json` 加进来后再运行生成脚本即可。</td>'
+            '<td colspan="8" class="empty">当前没有可发布的游戏条目。把 `游戏目录` 下的 `game.json` 加进来后再运行生成脚本即可。</td>'
             "</tr>"
         )
+
+    sort_script = """
+    <script>
+    (function () {
+      "use strict";
+      var tbody = document.querySelector("tbody");
+      if (!tbody) return;
+      var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+      var ths = Array.prototype.slice.call(document.querySelectorAll("th[data-sort]"));
+      var collator = typeof Intl !== "undefined" && typeof Intl.Collator === "function"
+        ? new Intl.Collator("zh-Hans-CN", { sensitivity: "base", numeric: true })
+        : null;
+      var active = "__ACTIVE__";
+      var dir = active === "title" ? 1 : -1;
+
+      function readValue(row, key) {
+        var v = row.getAttribute("data-" + key) || "";
+        if (key === "title") return v;
+        var n = parseFloat(v);
+        return isNaN(n) ? -Infinity : n;
+      }
+      function compare(a, b, key) {
+        var av = readValue(a, key), bv = readValue(b, key);
+        if (key === "title") {
+          return collator ? collator.compare(av, bv) : (av < bv ? -1 : av > bv ? 1 : 0);
+        }
+        return av - bv;
+      }
+      ths.forEach(function (th) {
+        th.addEventListener("click", function () {
+          var key = th.getAttribute("data-sort");
+          if (active === key) { dir = -dir; } else { active = key; dir = key === "title" ? 1 : -1; }
+          rows.sort(function (a, b) { return compare(a, b, key) * dir; });
+          rows.forEach(function (row) { tbody.appendChild(row); });
+        });
+      });
+    })();
+    </script>
+""".replace("__ACTIVE__", sort_js)
 
     index_html = f"""<!doctype html>
 <html lang="zh-CN">
@@ -516,6 +660,13 @@ def write_index_html(path: Path, manifest: dict[str, Any], search_index: dict[st
         color: var(--muted);
         font-weight: 600;
       }}
+      th[data-sort] {{
+        cursor: pointer;
+        user-select: none;
+      }}
+      th[data-sort]:hover {{
+        color: var(--accent);
+      }}
       td {{
         font-size: 14px;
       }}
@@ -557,8 +708,10 @@ def write_index_html(path: Path, manifest: dict[str, Any], search_index: dict[st
         td:nth-child(2)::before {{ content: "分类"; }}
         td:nth-child(3)::before {{ content: "平台"; }}
         td:nth-child(4)::before {{ content: "简介"; }}
-        td:nth-child(5)::before {{ content: "封面"; }}
-        td:nth-child(6)::before {{ content: "资源"; }}
+        td:nth-child(5)::before {{ content: "热度"; }}
+        td:nth-child(6)::before {{ content: "发布时间"; }}
+        td:nth-child(7)::before {{ content: "封面"; }}
+        td:nth-child(8)::before {{ content: "资源"; }}
       }}
     </style>
   </head>
@@ -567,7 +720,7 @@ def write_index_html(path: Path, manifest: dict[str, Any], search_index: dict[st
       <header>
         <h1>复古大厅游戏库</h1>
         <div class="meta">
-          共 {game_count} 个条目，生成时间 {generated_at}
+          共 {game_count} 个条目，默认按 {sort_label} 排序，生成时间 {generated_at}
         </div>
         <div class="links">
           <a href="{base_href}manifest.v1.json">清单文件</a>
@@ -580,10 +733,12 @@ def write_index_html(path: Path, manifest: dict[str, Any], search_index: dict[st
         <table>
           <thead>
             <tr>
-              <th>标题</th>
+              <th data-sort="title">标题</th>
               <th>分类</th>
               <th>平台</th>
               <th>简介</th>
+              <th data-sort="hotness">热度</th>
+              <th data-sort="date">发布时间</th>
               <th>封面</th>
               <th>资源</th>
             </tr>
@@ -595,9 +750,10 @@ def write_index_html(path: Path, manifest: dict[str, Any], search_index: dict[st
       </section>
 
       <div class="note">
-        说明：这个首页是静态生成的，部署到静态站点后，仓库根路径就会有可访问页面，不再直接返回 404。
+        说明：这个首页是静态生成的，部署到静态站点后，仓库根路径就会有可访问页面，不再直接返回 404。点击标题 / 热度 / 发布时间表头可在页面内切换排序。
       </div>
     </main>
+    {sort_script}
   </body>
 </html>
 """

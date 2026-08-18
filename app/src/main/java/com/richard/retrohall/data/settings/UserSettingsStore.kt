@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.richard.retrohall.domain.settings.AspectRatio
+import com.richard.retrohall.domain.settings.ControlMode
 import com.richard.retrohall.domain.settings.UserSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -23,6 +24,7 @@ class UserSettingsStore(private val context: Context) {
             virtualPadVisible = preferences[Keys.VirtualPadVisible] ?: true,
             virtualPadOpacity = preferences[Keys.VirtualPadOpacity] ?: 0.7f,
             virtualPadScale = preferences[Keys.VirtualPadScale] ?: 1.0f,
+            controlMode = preferences[Keys.ControlMode]?.let { ControlMode.valueOf(it) } ?: ControlMode.VirtualPad,
             hideVirtualPadWhenGamepadConnected = preferences[Keys.HideVirtualPadWhenGamepadConnected] ?: true,
             autoSaveStateEnabled = preferences[Keys.AutoSaveStateEnabled] ?: true,
         )
@@ -37,6 +39,7 @@ class UserSettingsStore(private val context: Context) {
             preferences[Keys.VirtualPadVisible] = settings.virtualPadVisible
             preferences[Keys.VirtualPadOpacity] = settings.virtualPadOpacity.coerceIn(0.1f, 1f)
             preferences[Keys.VirtualPadScale] = settings.virtualPadScale.coerceIn(0.5f, 2f)
+            preferences[Keys.ControlMode] = settings.controlMode.name
             preferences[Keys.HideVirtualPadWhenGamepadConnected] = settings.hideVirtualPadWhenGamepadConnected
             preferences[Keys.AutoSaveStateEnabled] = settings.autoSaveStateEnabled
         }
@@ -50,6 +53,7 @@ class UserSettingsStore(private val context: Context) {
         val VirtualPadVisible = booleanPreferencesKey("virtual_pad_visible")
         val VirtualPadOpacity = floatPreferencesKey("virtual_pad_opacity")
         val VirtualPadScale = floatPreferencesKey("virtual_pad_scale")
+        val ControlMode = stringPreferencesKey("control_mode")
         val HideVirtualPadWhenGamepadConnected = booleanPreferencesKey("hide_virtual_pad_when_gamepad_connected")
         val AutoSaveStateEnabled = booleanPreferencesKey("auto_save_state_enabled")
     }

@@ -17,6 +17,7 @@ class UserSettingsTest {
         assertTrue(settings.virtualPadVisible)
         assertEquals(0.7f, settings.virtualPadOpacity)
         assertEquals(1.0f, settings.virtualPadScale)
+        assertEquals(ControlMode.VirtualPad, settings.controlMode)
         assertTrue(settings.hideVirtualPadWhenGamepadConnected)
         assertTrue(settings.autoSaveStateEnabled)
     }

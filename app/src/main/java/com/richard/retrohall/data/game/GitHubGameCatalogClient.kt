@@ -12,11 +12,19 @@ interface RemoteGameCatalogClient {
 }
 
 class GitHubGameCatalogClient(
-    private val manifestUrl: String = DEFAULT_MANIFEST_URL,
+    private val manifestUrls: List<String> = DEFAULT_MANIFEST_URLS,
 ) : RemoteGameCatalogClient {
     override suspend fun fetchGames(): List<LocalGame> = withContext(Dispatchers.IO) {
-        val json = fetchText(manifestUrl)
-        parseManifest(JSONObject(json))
+        val errors = mutableListOf<String>()
+        for (manifestUrl in manifestUrls) {
+            val json = runCatching { fetchText(manifestUrl) }
+                .onFailure { error -> errors += "${manifestUrl}: ${error.message}" }
+                .getOrNull()
+            if (!json.isNullOrBlank()) {
+                return@withContext parseManifest(JSONObject(json))
+            }
+        }
+        throw IllegalStateException("远程游戏库同步失败：${errors.joinToString("；")}")
     }
 
     private fun fetchText(url: String): String {
@@ -54,6 +62,12 @@ class GitHubGameCatalogClient(
                     titleObject?.optString("zh")?.ifBlank { titleObject.optString("en") } ?: sourceId
                 }
                 val assets = item.optJSONObject("assets")
+                val hashes = firstRom.optJSONObject("hash") ?: firstRom.optJSONObject("hashes")
+                val description = item.optString("description").ifBlank {
+                    val descriptionObject = item.optJSONObject("description")
+                    descriptionObject?.optString("zh")?.ifBlank { descriptionObject.optString("en") }.orEmpty()
+                }
+                val hotness = if (item.has("hotness")) item.optDouble("hotness", Double.NaN) else Double.NaN
 
                 add(
                     LocalGame(
@@ -61,8 +75,13 @@ class GitHubGameCatalogClient(
                         title = title,
                         platform = item.optString("platform").ifBlank { "FC/NES" },
                         category = item.optString("category").ifBlank { "在线游戏库" },
-                        coverPath = assets?.optString("coverUrl").orEmpty(),
+                        coverPath = assets?.optString("coverUrl").orEmpty().takeUnless { it.equals("null", ignoreCase = true) }.orEmpty(),
                         romPath = firstRom.optString("url").ifBlank { firstRom.optString("path") },
+                        description = description,
+                        romMd5 = firstRom.optHash("md5").ifBlank { hashes?.optHash("md5").orEmpty() },
+                        romSha1 = firstRom.optHash("sha1").ifBlank { hashes?.optHash("sha1").orEmpty() },
+                        romCrc32 = firstRom.optHash("crc32").ifBlank { hashes?.optHash("crc32").orEmpty() },
+                        hotness = hotness.takeIf { it.isFinite() && it > 0 },
                     ),
                 )
             }
@@ -71,8 +90,19 @@ class GitHubGameCatalogClient(
 
     companion object {
         const val DEFAULT_MANIFEST_URL =
-            "https://raw.githubusercontent.com/Richard2091/FC_ROMS/main/manifest.v1.json"
+            "https://richard2091.github.io/FC_ROMS/manifest.v1.json"
+        val DEFAULT_MANIFEST_URLS = listOf(
+            DEFAULT_MANIFEST_URL,
+            "https://raw.githubusercontent.com/Richard2091/FC_ROMS/main/manifest.v1.json",
+            "https://fastly.jsdelivr.net/gh/Richard2091/FC_ROMS@main/manifest.v1.json",
+            "https://gcore.jsdelivr.net/gh/Richard2091/FC_ROMS@main/manifest.v1.json",
+            "https://cdn.statically.io/gh/Richard2091/FC_ROMS/main/manifest.v1.json",
+        )
     }
+}
+
+private fun JSONObject.optHash(name: String): String {
+    return optString(name).ifBlank { optString(name.uppercase()) }.trim()
 }
 
 private inline fun <T> HttpURLConnection.use(block: HttpURLConnection.() -> T): T {

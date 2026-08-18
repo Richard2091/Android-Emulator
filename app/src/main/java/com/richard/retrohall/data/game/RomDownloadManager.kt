@@ -11,6 +11,21 @@ import java.net.URL
 class RomDownloadManager(context: Context) {
     private val filesRoot = context.applicationContext.filesDir
 
+    fun isDownloaded(gameId: String): Boolean {
+        val dir = File(filesRoot, "rom-cache/$gameId")
+        return dir.listFiles()?.any { it.isFile && it.length() > 0L } == true
+    }
+
+    fun localSize(gameId: String): Long? {
+        val dir = File(filesRoot, "rom-cache/$gameId")
+        val files = dir.listFiles()?.filter { it.isFile && it.length() > 0L } ?: return null
+        return files.sumOf { it.length() }.takeIf { it > 0L }
+    }
+
+    suspend fun deleteLocal(game: LocalGame) = withContext(Dispatchers.IO) {
+        File(filesRoot, "rom-cache/${game.id}").deleteRecursively()
+    }
+
     suspend fun prepare(game: LocalGame): LocalGame = withContext(Dispatchers.IO) {
         if (!game.romPath.startsWith("http://") && !game.romPath.startsWith("https://")) {
             return@withContext game

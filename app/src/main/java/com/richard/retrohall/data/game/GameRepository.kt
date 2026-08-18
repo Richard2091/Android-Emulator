@@ -4,8 +4,11 @@ import com.richard.retrohall.data.assets.FakeGameCatalog
 import com.richard.retrohall.data.db.LocalGameDao
 import com.richard.retrohall.data.db.toEntity
 import com.richard.retrohall.domain.game.LocalGame
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * 管理本地游戏库、收藏状态和最近游玩统计。
@@ -15,6 +18,8 @@ import kotlinx.coroutines.flow.map
 class GameRepository(
     private val localGameDao: LocalGameDao,
     private val remoteClient: RemoteGameCatalogClient? = null,
+    private val metadataClient: GameMetadataClient? = null,
+    private val zhMetadataClient: ZhMetadataClient? = null,
 ) {
     val games: Flow<List<LocalGame>> = localGameDao.observeAll().map { entities ->
         entities.map { it.toDomain() }
@@ -51,20 +56,47 @@ class GameRepository(
     suspend fun syncRemoteCatalog(): Int {
         val client = remoteClient ?: return 0
         val fetchedGames = client.fetchGames()
+        val zhMap = zhMetadataClient?.load().orEmpty()
         val existingById = localGameDao.getAll().associateBy { it.id }
         val remoteGames = fetchedGames.map { game ->
             val existing = existingById[game.id]
-            if (existing == null) {
+            val base = if (existing == null) {
                 game
             } else {
                 game.copy(
                     favorite = existing.favorite,
                     lastPlayedAt = existing.lastPlayedAt,
                     totalPlayTimeMillis = existing.totalPlayTimeMillis,
+                    coverPath = game.coverPath.ifBlank { existing.coverPath },
+                    description = game.description.ifBlank { existing.description },
+                    hotness = game.hotness ?: existing.hotness,
                 )
+            }
+            // 预生成中文元数据优先提供简介，无简介时留给 Hasheous 英文兜底。
+            val zh = zhMap[game.id.removePrefix("github-")]
+            if (zh != null && zh.intro.isNotBlank()) {
+                base.copy(description = zh.intro)
+            } else {
+                base
             }
         }
         localGameDao.upsertAll(remoteGames.map { it.toEntity() })
+        metadataClient?.let { client ->
+            remoteGames.forEach { game ->
+                val enriched = client.enrich(game)
+                localGameDao.updateMetadata(
+                    gameId = enriched.id,
+                    title = enriched.title,
+                    platform = enriched.platform,
+                    category = enriched.category,
+                    coverPath = enriched.coverPath,
+                    description = enriched.description,
+                    romMd5 = enriched.romMd5,
+                    romSha1 = enriched.romSha1,
+                    romCrc32 = enriched.romCrc32,
+                )
+            }
+        }
         return remoteGames.size
     }
 
@@ -87,6 +119,58 @@ class GameRepository(
     suspend fun markPlayed(gameId: String, playedAt: Long = System.currentTimeMillis()) {
         // 启动时只刷新最近游玩，不增加时长。
         localGameDao.updatePlayStats(gameId, playedAt, 0L)
+    }
+
+    /**
+     * 懒加载封面：仅对封面文件缺失或仍是远程地址的游戏重新获取元数据并下载封面。
+     *
+     * 清理缓存后数据库中的本地封面路径会失效，打开游戏列表时调用本方法即可按需恢复，
+     * 已存在的封面（含打包私有资源）会被跳过。
+     *
+     * @return 是否有封面被重新加载（调用方可据此刷新封面渲染缓存）。
+     */
+    suspend fun refreshCovers(): Boolean = withContext(Dispatchers.IO) {
+        var changed = false
+        localGameDao.getAll().map { it.toDomain() }.forEach { game ->
+            if (!coverMissing(game)) return@forEach
+            val enriched = metadataClient?.enrich(game) ?: return@forEach
+            if (enriched.coverPath != game.coverPath) {
+                localGameDao.updateMetadata(
+                    gameId = enriched.id,
+                    title = enriched.title,
+                    platform = enriched.platform,
+                    category = enriched.category,
+                    coverPath = enriched.coverPath,
+                    description = enriched.description,
+                    romMd5 = enriched.romMd5,
+                    romSha1 = enriched.romSha1,
+                    romCrc32 = enriched.romCrc32,
+                )
+            }
+            changed = true
+        }
+        changed
+    }
+
+    private fun coverMissing(game: LocalGame): Boolean {
+        val path = game.coverPath
+        if (path.isBlank()) return false
+        if (path.startsWith("http://", ignoreCase = true) || path.startsWith("https://", ignoreCase = true)) {
+            return true
+        }
+        val file = File(path)
+        // 相对路径属于打包资源引用，不属于可清理的缓存，跳过。
+        if (!file.isAbsolute) return false
+        return !file.isFile
+    }
+
+    /**
+     * 从本地游戏库移除指定游戏记录。
+     *
+     * @param gameId 游戏 ID。
+     */
+    suspend fun deleteGame(gameId: String) {
+        localGameDao.deleteById(gameId)
     }
 
     /**
