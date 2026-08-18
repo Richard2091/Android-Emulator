@@ -33,6 +33,7 @@
 
 仓库新增 `.github/workflows/publish-game-library-pages.yml`，用于扫描 `games/<游戏目录>/game.json` 并发布 `manifest.v1.json` 与 `search-index.v1.json` 到 GitHub Pages。仓库还没有 `games/` 目录时会发布空游戏索引，这是初始化阶段的预期结果。
 Pages 根路径会同时生成一个静态首页，便于直接访问和校验发布结果。
+生成器会合并本地 `game.json` 中的多来源图片，并继续尝试 `libretro-thumbnails` 的 `Named_Snaps`、`Named_Boxarts`、`Named_Logos` 等兜底资源；重复图片会按内容去重，不会在 Pages 中重复落盘。
 
 当前 Android 工程仍默认忽略 `*.nes` 等私有资源；实际 ROM 资源仓库需要单独确认版权、仓库权限和 `.gitignore` 策略。
 Pages 生成会把封面下载并缓存到静态输出目录，再把 `coverUrl` 写成可直接访问的静态地址。

@@ -94,7 +94,8 @@ def load_games(games_dir: Path, output_dir: Path, base_url: str, sort: str = "id
     if not games_dir.exists():
         return []
 
-    cover_cache: dict[str, str] = {}
+    image_source_cache: dict[str, str] = {}
+    image_digest_cache: dict[str, str] = {}
     games: list[dict[str, Any]] = []
     for game_json in sorted(games_dir.glob("*/game.json")):
         raw = json.loads(game_json.read_text(encoding="utf-8-sig"))
@@ -107,7 +108,8 @@ def load_games(games_dir: Path, output_dir: Path, base_url: str, sort: str = "id
                 game_dir=game_dir,
                 output_dir=output_dir,
                 base_url=base_url,
-                cover_cache=cover_cache,
+                image_source_cache=image_source_cache,
+                image_digest_cache=image_digest_cache,
             ),
         )
     games.sort(key=lambda item: sort_key(item, sort))
@@ -162,7 +164,8 @@ def normalize_game(
     game_dir: Path,
     output_dir: Path,
     base_url: str,
-    cover_cache: dict[str, str],
+    image_source_cache: dict[str, str],
+    image_digest_cache: dict[str, str],
 ) -> dict[str, Any]:
     game_id = str(raw.get("id") or slug)
     title = raw.get("title") or raw.get("displayTitle") or game_id
@@ -187,8 +190,54 @@ def normalize_game(
         base_url=base_url,
         roms=normalized_roms,
         assets=assets,
-        cover_cache=cover_cache,
+        image_source_cache=image_source_cache,
+        image_digest_cache=image_digest_cache,
     )
+    screenshot_urls = resolve_image_group(
+        raw=raw,
+        slug=slug,
+        title=title,
+        roms=normalized_roms,
+        game_dir=game_dir,
+        output_dir=output_dir,
+        base_url=base_url,
+        image_source_cache=image_source_cache,
+        image_digest_cache=image_digest_cache,
+        group="screenshots",
+        fallback_kinds=("Named_Snaps", "Named_Boxarts", "Named_Logos"),
+        fallback_sources=(
+            raw.get("screenshots"),
+            raw.get("screenshotUrls"),
+            assets.get("screenshots"),
+            assets.get("screenshotUrls"),
+            assets.get("screenshotSources"),
+        ),
+    )
+    logo_urls = resolve_image_group(
+        raw=raw,
+        slug=slug,
+        title=title,
+        roms=normalized_roms,
+        game_dir=game_dir,
+        output_dir=output_dir,
+        base_url=base_url,
+        image_source_cache=image_source_cache,
+        image_digest_cache=image_digest_cache,
+        group="logos",
+        fallback_kinds=("Named_Logos", "Named_Titles"),
+        fallback_sources=(
+            raw.get("logos"),
+            raw.get("logoUrls"),
+            assets.get("logos"),
+            assets.get("logoUrls"),
+            assets.get("logoSources"),
+        ),
+    )
+    screenshot_urls = [url for url in screenshot_urls if url and url != cover_url]
+    logo_seen = set(screenshot_urls)
+    if cover_url:
+        logo_seen.add(cover_url)
+    logo_urls = [url for url in logo_urls if url and url not in logo_seen]
 
     item: dict[str, Any] = {
         "id": game_id,
@@ -201,11 +250,8 @@ def normalize_game(
         "releaseDate": title_text(raw.get("releaseDate") or raw.get("publishedAt") or ""),
         "assets": {
             "coverUrl": cover_url,
-            "screenshots": [
-                resolve_url(value, slug=slug, base_url=base_url)
-                for value in assets.get("screenshots", [])
-                if isinstance(value, str) and value
-            ],
+            "screenshots": screenshot_urls,
+            "logoUrls": logo_urls,
         },
         "roms": normalized_roms,
     }
@@ -251,63 +297,190 @@ def resolve_cover_url(
     base_url: str,
     roms: list[dict[str, Any]],
     assets: dict[str, Any],
-    cover_cache: dict[str, str],
+    image_source_cache: dict[str, str],
+    image_digest_cache: dict[str, str],
 ) -> str:
-    explicit_cover = raw.get("cover") or assets.get("cover") or assets.get("coverUrl") or ""
-    if explicit_cover:
-        materialized = materialize_cover(
-            source=str(explicit_cover),
-            slug=slug,
-            game_dir=game_dir,
-            output_dir=output_dir,
-            base_url=base_url,
-            cover_cache=cover_cache,
-        )
-        if materialized:
-            return materialized
-
+    sources = collect_sources(
+        raw.get("cover"),
+        assets.get("cover"),
+        assets.get("coverUrl"),
+        assets.get("coverSources"),
+        assets.get("coverUrls"),
+    )
     playlist = thumbnail_playlist(str(raw.get("platform") or "FC/NES"))
-    if not playlist:
-        return ""
+    sources.extend(
+        thumbnail_sources(
+            playlist=playlist,
+            kinds=("Named_Boxarts", "Named_Logos"),
+            raw=raw,
+            title=title,
+            slug=slug,
+            roms=roms,
+        )
+    )
+    return first_materialized_image(
+        sources=sources,
+        slug=slug,
+        game_dir=game_dir,
+        output_dir=output_dir,
+        base_url=base_url,
+        image_source_cache=image_source_cache,
+        image_digest_cache=image_digest_cache,
+        folder="covers",
+    )
 
+
+def resolve_image_group(
+    raw: dict[str, Any],
+    slug: str,
+    title: str,
+    roms: list[dict[str, Any]],
+    game_dir: Path,
+    output_dir: Path,
+    base_url: str,
+    image_source_cache: dict[str, str],
+    image_digest_cache: dict[str, str],
+    group: str,
+    fallback_kinds: tuple[str, ...],
+    fallback_sources: tuple[Any, ...],
+) -> list[str]:
+    sources = collect_sources(*fallback_sources)
+    playlist = thumbnail_playlist(str(raw.get("platform") or "FC/NES"))
+    sources.extend(
+        thumbnail_sources(
+            playlist=playlist,
+            kinds=fallback_kinds,
+            raw=raw,
+            title=title,
+            slug=slug,
+            roms=roms,
+        )
+    )
+    return materialize_image_group(
+        sources=sources,
+        slug=slug,
+        game_dir=game_dir,
+        output_dir=output_dir,
+        base_url=base_url,
+        image_source_cache=image_source_cache,
+        image_digest_cache=image_digest_cache,
+        folder=group,
+    )
+
+
+def thumbnail_sources(
+    playlist: str,
+    kinds: tuple[str, ...],
+    raw: dict[str, Any],
+    title: str,
+    slug: str,
+    roms: list[dict[str, Any]],
+) -> list[str]:
+    if not playlist:
+        return []
     candidates = [
         first_non_blank(
             roms[0].get("name") if roms else "",
             Path(str(raw.get("rom") or raw.get("romPath") or "")).stem,
         ),
-        first_non_blank(
-            raw.get("displayTitle"),
-            title,
-        ),
+        first_non_blank(raw.get("displayTitle"), title),
         slug,
     ]
+    urls: list[str] = []
+    seen: set[str] = set()
     for candidate in candidates:
         if not candidate:
             continue
-        boxart = thumbnail_url(playlist, "Named_Boxarts", candidate)
-        if boxart:
-            materialized = materialize_cover(
-                source=boxart,
-                slug=slug,
-                game_dir=game_dir,
-                output_dir=output_dir,
-                base_url=base_url,
-                cover_cache=cover_cache,
-            )
-            if materialized:
-                return materialized
-        logo = thumbnail_url(playlist, "Named_Logos", candidate)
-        if logo:
-            materialized = materialize_cover(
-                source=logo,
-                slug=slug,
-                game_dir=game_dir,
-                output_dir=output_dir,
-                base_url=base_url,
-                cover_cache=cover_cache,
-            )
-            if materialized:
-                return materialized
+        for kind in kinds:
+            source = thumbnail_url(playlist, kind, candidate)
+            if source not in seen:
+                seen.add(source)
+                urls.append(source)
+    return urls
+
+
+def collect_sources(*values: Any) -> list[str]:
+    sources: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for source in flatten_sources(value):
+            source = title_text(source).strip()
+            if not source or source.lower() == "null" or source in seen:
+                continue
+            seen.add(source)
+            sources.append(source)
+    return sources
+
+
+def flatten_sources(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        items: list[str] = []
+        for key in ("url", "path", "source"):
+            if key in value:
+                items.extend(flatten_sources(value.get(key)))
+        return items
+    if isinstance(value, (list, tuple, set)):
+        items: list[str] = []
+        for item in value:
+            items.extend(flatten_sources(item))
+        return items
+    return [str(value)]
+
+
+def materialize_image_group(
+    sources: list[str],
+    slug: str,
+    game_dir: Path,
+    output_dir: Path,
+    base_url: str,
+    image_source_cache: dict[str, str],
+    image_digest_cache: dict[str, str],
+    folder: str,
+) -> list[str]:
+    urls: list[str] = []
+    for source in sources:
+        materialized = materialize_image(
+            source=source,
+            slug=slug,
+            game_dir=game_dir,
+            output_dir=output_dir,
+            base_url=base_url,
+            image_source_cache=image_source_cache,
+            image_digest_cache=image_digest_cache,
+            folder=folder,
+        )
+        if materialized and materialized not in urls:
+            urls.append(materialized)
+    return urls
+
+
+def first_materialized_image(
+    sources: list[str],
+    slug: str,
+    game_dir: Path,
+    output_dir: Path,
+    base_url: str,
+    image_source_cache: dict[str, str],
+    image_digest_cache: dict[str, str],
+    folder: str,
+) -> str:
+    for source in sources:
+        materialized = materialize_image(
+            source=source,
+            slug=slug,
+            game_dir=game_dir,
+            output_dir=output_dir,
+            base_url=base_url,
+            image_source_cache=image_source_cache,
+            image_digest_cache=image_digest_cache,
+            folder=folder,
+        )
+        if materialized:
+            return materialized
     return ""
 
 
@@ -339,23 +512,28 @@ def thumbnail_url(playlist: str, kind: str, game_name: str) -> str:
     return f"https://thumbnails.libretro.com/{playlist_part}/{kind_part}/{game_part}.png"
 
 
-def materialize_cover(
+def materialize_image(
     source: str,
     slug: str,
     game_dir: Path,
     output_dir: Path,
     base_url: str,
-    cover_cache: dict[str, str],
+    image_source_cache: dict[str, str],
+    image_digest_cache: dict[str, str],
+    folder: str,
 ) -> str:
     if not source:
         return ""
-    cached = cover_cache.get(source)
+    cached = image_source_cache.get(source)
     if cached:
-        return cover_asset_url(cached, base_url)
+        cached_path = output_dir / cached
+        if cached_path.exists() and cached_path.stat().st_size > 0:
+            return cover_asset_url(cached, base_url)
+        image_source_cache.pop(source, None)
 
-    target_dir = output_dir / "covers"
+    target_dir = output_dir / folder
     target_dir.mkdir(parents=True, exist_ok=True)
-    target_path = target_dir / cover_file_name(source, slug, game_dir)
+    target_path = target_dir / image_file_name(source, slug, game_dir)
     if source.startswith("http://") or source.startswith("https://"):
         if not target_path.exists() or target_path.stat().st_size == 0:
             if not download_url(source, target_path):
@@ -368,12 +546,23 @@ def materialize_cover(
             shutil.copyfile(local_path, target_path)
 
     if target_path.exists() and target_path.stat().st_size > 0:
-        cover_cache[source] = target_path.relative_to(output_dir).as_posix()
-        return cover_asset_url(cover_cache[source], base_url)
+        relative_path = target_path.relative_to(output_dir).as_posix()
+        digest = image_digest(target_path)
+        existing = image_digest_cache.get(digest)
+        if existing and existing != relative_path:
+            try:
+                target_path.unlink()
+            except FileNotFoundError:
+                pass
+            image_source_cache[source] = existing
+            return cover_asset_url(existing, base_url)
+        image_digest_cache[digest] = relative_path
+        image_source_cache[source] = relative_path
+        return cover_asset_url(relative_path, base_url)
     return ""
 
 
-def cover_file_name(source: str, slug: str, game_dir: Path) -> str:
+def image_file_name(source: str, slug: str, game_dir: Path) -> str:
     suffix = Path(urlparse(source).path).suffix
     if not suffix:
         local_path = resolve_local_path(source, game_dir)
@@ -383,6 +572,10 @@ def cover_file_name(source: str, slug: str, game_dir: Path) -> str:
         suffix = ".png"
     digest = hashlib.sha1(source.encode("utf-8")).hexdigest()[:16]
     return f"{slug}-{digest}{suffix}"
+
+
+def image_digest(path: Path) -> str:
+    return hashlib.sha1(path.read_bytes()).hexdigest()
 
 
 def resolve_local_path(source: str, game_dir: Path) -> Path | None:
