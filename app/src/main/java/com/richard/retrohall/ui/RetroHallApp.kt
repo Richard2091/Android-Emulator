@@ -107,6 +107,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -715,6 +716,7 @@ private fun HallScreen(
     var focusSearchOnReveal by remember { mutableStateOf(false) }
     val downloadStatusOptions = listOf("全部", "已下载", "未下载")
     var toolbarInteractionTick by remember { mutableStateOf(0L) }
+    var searchFocused by remember { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
     val pageFocusRequester = remember { FocusRequester() }
     val density = LocalDensity.current
@@ -770,10 +772,10 @@ private fun HallScreen(
         }
     }
 
-    LaunchedEffect(searchVisible, toolbarInteractionTick) {
-        if (searchVisible) {
+    LaunchedEffect(searchVisible, toolbarInteractionTick, searchFocused) {
+        if (searchVisible && !searchFocused) {
             delay(5000)
-            if (searchVisible) {
+            if (searchVisible && !searchFocused) {
                 searchVisible = false
                 focusSearchOnReveal = false
             }
@@ -871,6 +873,18 @@ private fun HallScreen(
                         "收藏" -> favoritesGridState
                         else -> libraryGridState
                     }
+                    var listAtTop by remember(gridState) { mutableStateOf(true) }
+                    val spaceProgress by animateFloatAsState(
+                        targetValue = if (showSearch || !listAtTop) 1f else 0f,
+                        animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+                        label = "toolbarSpaceProgress",
+                    )
+                    LaunchedEffect(gridState) {
+                        snapshotFlow {
+                            gridState.firstVisibleItemIndex == 0 &&
+                                gridState.firstVisibleItemScrollOffset <= 0
+                        }.collect { isTop -> listAtTop = isTop }
+                    }
                     var pullDistance by remember(selectedSection) { mutableStateOf(0f) }
                     val searchRevealScroll = remember(gridState, selectedSection, searchPullThreshold, filters) {
                         object : NestedScrollConnection {
@@ -918,7 +932,7 @@ private fun HallScreen(
                                 .fillMaxSize()
                                 .nestedScroll(searchRevealScroll),
                             contentPadding = PaddingValues(
-                                top = gridTopPadding + (toolbarHeight + toolbarGap) * toolbarProgress,
+                                top = gridTopPadding + (toolbarHeight + toolbarGap) * spaceProgress,
                                 bottom = 28.dp,
                             ),
                             horizontalArrangement = Arrangement.spacedBy(gap),
@@ -963,6 +977,7 @@ private fun HallScreen(
                         onSelectSort = { onFilterChange(filters.copy(sort = it)) },
                         focusRequester = searchFocusRequester,
                         onInteraction = { toolbarInteractionTick++ },
+                        onSearchFocusChange = { searchFocused = it },
                         toolbarVisible = showSearch,
                     )
                 }
@@ -1183,6 +1198,7 @@ private fun HallFilterBar(
     onSelectSort: (GameSort) -> Unit,
     focusRequester: FocusRequester,
     onInteraction: () -> Unit,
+    onSearchFocusChange: (Boolean) -> Unit,
     toolbarVisible: Boolean,
 ) {
     Row(
@@ -1256,6 +1272,7 @@ private fun HallFilterBar(
             query = query,
             onQueryChange = onQueryChange,
             focusRequester = focusRequester,
+            onFocusChange = onSearchFocusChange,
             modifier = Modifier.weight(1f),
         )
     }
@@ -1360,6 +1377,7 @@ private fun SearchBox(
     onQueryChange: (String) -> Unit,
     focusRequester: FocusRequester = remember { FocusRequester() },
     modifier: Modifier = Modifier,
+    onFocusChange: (Boolean) -> Unit = {},
 ) {
     var focused by remember { mutableStateOf(false) }
     Box(
@@ -1369,7 +1387,10 @@ private fun SearchBox(
             .clip(RoundedCornerShape(12.dp))
             .background(if (focused) Color(0x2835F1DD) else Color(0x16FFFFFF), RoundedCornerShape(12.dp))
             .border(1.dp, if (focused) UiCyan else Color(0x1FDAF1F4), RoundedCornerShape(12.dp))
-            .onFocusChanged { focused = it.isFocused },
+            .onFocusChanged {
+                focused = it.isFocused
+                onFocusChange(it.isFocused)
+            },
     ) {
         Row(
             modifier = Modifier
