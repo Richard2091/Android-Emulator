@@ -1,7 +1,10 @@
 package com.richard.retrohall.emulator
 
 import androidx.test.core.app.ApplicationProvider
+import com.richard.retrohall.data.core.CoreCatalogClient
+import com.richard.retrohall.data.core.CoreSelectionStore
 import com.richard.retrohall.domain.game.LocalGame
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -11,7 +14,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class EmulatorSessionFactoryTest {
     @Test
-    fun fallsBackToFakeSessionWhenCoreIsMissing() {
+    fun fallsBackToFakeSessionWhenCoreIsMissing() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         context.filesDir.deleteRecursively()
         context.filesDir.mkdirs()
@@ -24,7 +27,12 @@ class EmulatorSessionFactoryTest {
             romPath = "files/roms/sample.nes",
         )
 
-        val result = EmulatorSessionFactory(context).createStartedSession(game)
+        val factory = EmulatorSessionFactory(
+            context,
+            CoreCatalogClient("https://richard2091.github.io/RetroGame-Cores/"),
+            CoreSelectionStore(context),
+        )
+        val result = factory.createStartedSession(game)
 
         assertTrue(result.session is FakeEmulatorSession)
         assertEquals(EmulatorState.Running, result.session.state)

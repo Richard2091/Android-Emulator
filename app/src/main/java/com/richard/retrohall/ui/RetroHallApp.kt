@@ -21,10 +21,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.richard.retrohall.RetroHallDependencies
 import com.richard.retrohall.data.bootstrap.AppBootstrapper
+import com.richard.retrohall.data.core.CoreCatalogClient
+import com.richard.retrohall.data.core.CoreDownloadManager
+import com.richard.retrohall.data.core.CoreSelectionStore
+import com.richard.retrohall.data.game.ContentDownloadManager
 import com.richard.retrohall.data.game.GameRepository
+import com.richard.retrohall.data.game.ResourceCatalogClient
 import com.richard.retrohall.data.game.RomDownloadManager
 import com.richard.retrohall.data.settings.UserSettingsStore
 import com.richard.retrohall.domain.game.CoverImageLoader
+import com.richard.retrohall.domain.game.GameDetail
 import com.richard.retrohall.domain.game.LocalGame
 import com.richard.retrohall.domain.save.SaveSlot
 import com.richard.retrohall.domain.save.SaveStateStore
@@ -66,12 +72,17 @@ fun RetroHallApp() {
     RetroHallAppContent(
         gameRepository = dependencies.gameRepository,
         romDownloadManager = dependencies.romDownloadManager,
+        contentDownloadManager = dependencies.contentDownloadManager,
+        resourceCatalogClient = dependencies.resourceCatalogClient,
         emulatorSessionFactory = dependencies.emulatorSessionFactory,
         appBootstrapper = dependencies.appBootstrapper,
         userSettingsStore = dependencies.userSettingsStore,
         saveStateStore = dependencies.saveStateStore,
         cacheMaintenance = dependencies.cacheMaintenance,
         coverImageLoader = dependencies.coverImageLoader,
+        coreCatalogClient = dependencies.coreCatalogClient,
+        coreDownloadManager = dependencies.coreDownloadManager,
+        coreSelectionStore = dependencies.coreSelectionStore,
     )
 }
 
@@ -79,12 +90,17 @@ fun RetroHallApp() {
 private fun RetroHallAppContent(
     gameRepository: GameRepository,
     romDownloadManager: RomDownloadManager,
+    contentDownloadManager: ContentDownloadManager,
+    resourceCatalogClient: ResourceCatalogClient,
     emulatorSessionFactory: EmulatorSessionFactory,
     appBootstrapper: AppBootstrapper,
     userSettingsStore: UserSettingsStore,
     saveStateStore: SaveStateStore,
     cacheMaintenance: CacheMaintenance,
     coverImageLoader: CoverImageLoader,
+    coreCatalogClient: CoreCatalogClient,
+    coreDownloadManager: CoreDownloadManager,
+    coreSelectionStore: CoreSelectionStore,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -146,6 +162,7 @@ private fun RetroHallAppContent(
                 AppRoute.Hall -> HallScreen(
                     games = games,
                     romDownloadManager = romDownloadManager,
+                    contentDownloadManager = contentDownloadManager,
                     downloadVersion = downloadVersion,
                     selectedSection = selectedHallSection,
                     filters = when (selectedHallSection) {
@@ -186,8 +203,27 @@ private fun RetroHallAppContent(
 
                 is AppRoute.Detail -> {
                     val latestGame = games.firstOrNull { it.id == current.game.id } ?: current.game
+                    var detail by remember(latestGame.id) { mutableStateOf<GameDetail?>(null) }
+                    LaunchedEffect(latestGame.id, latestGame.detailUrl) {
+                        if (latestGame.detailUrl.isNotBlank()) {
+                            detail = runCatching<GameDetail> {
+                                gameRepository.fetchGameDetail(resourceCatalogClient, latestGame, detail)
+                            }.getOrNull()
+                        }
+                    }
+                    val displayGame = latestGame.let { base ->
+                        val d = detail
+                        if (d == null) {
+                            base
+                        } else {
+                            base.copy(
+                                description = d.description["zh"].orEmpty().ifBlank { base.description },
+                                screenshots = if (base.screenshots.isEmpty()) d.media.screenshotUrls else base.screenshots,
+                            )
+                        }
+                    }
                     DetailScreen(
-                        game = latestGame,
+                        game = displayGame,
                         message = launchMessage,
                         saveStateStore = saveStateStore,
                         selectedSaveId = selectedSaveIds[latestGame.id],
@@ -201,14 +237,17 @@ private fun RetroHallAppContent(
                         onToggleFavorite = {
                             scope.launch { gameRepository.toggleFavorite(latestGame) }
                         },
-                        isDownloaded = remember(latestGame, downloadVersion) { romDownloadManager.isDownloaded(latestGame) },
+                        isDownloaded = remember(latestGame, downloadVersion) {
+                            contentDownloadManager.isDownloaded(latestGame.id) || romDownloadManager.isDownloaded(latestGame)
+                        },
                         downloadedSizeText = remember(latestGame.id, downloadVersion) {
-                            val size = romDownloadManager.localSize(latestGame.id)
+                            val size = contentDownloadManager.localSize(latestGame.id) ?: romDownloadManager.localSize(latestGame.id)
                             if (size == null) "未下载" else formatFileSize(size)
                         },
                         onDelete = { includeSaves ->
                             scope.launch {
                                 if (includeSaves) saveStateStore.deleteForGame(latestGame.id)
+                                contentDownloadManager.deleteLocal(latestGame.id)
                                 romDownloadManager.deleteLocal(latestGame)
                                 downloadVersion++
                             }
@@ -216,7 +255,12 @@ private fun RetroHallAppContent(
                         onDownload = { onComplete ->
                             scope.launch {
                                 try {
-                                    romDownloadManager.prepare(latestGame)
+                                    val files = detail?.files.orEmpty()
+                                    if (files.isNotEmpty()) {
+                                        contentDownloadManager.prepare(latestGame, files)
+                                    } else {
+                                        romDownloadManager.prepare(latestGame)
+                                    }
                                     downloadVersion++
                                 } catch (e: Exception) {
                                     launchMessage = "下载失败：${e.message ?: "未知错误"}"
@@ -229,10 +273,15 @@ private fun RetroHallAppContent(
                             scope.launch {
                                 try {
                                     val (playableGame, startedAt, launch) = withContext(Dispatchers.IO) {
-                                        val playableGame = romDownloadManager.prepare(latestGame)
+                                        val files = detail?.files.orEmpty()
+                                        val prepared = if (files.isNotEmpty()) {
+                                            contentDownloadManager.prepare(latestGame, files)
+                                        } else {
+                                            romDownloadManager.prepare(latestGame)
+                                        }
                                         val startedAt = System.currentTimeMillis()
-                                        val launch = emulatorSessionFactory.createStartedSession(playableGame)
-                                        Triple(playableGame, startedAt, launch)
+                                        val launch = emulatorSessionFactory.createStartedSession(prepared)
+                                        Triple(prepared, startedAt, launch)
                                     }
                                     android.util.Log.i("RetroHallApp", "onStart ok, session.state=${launch.session.state}, msg=${launch.message}")
                                     launchMessage = launch.message
@@ -289,6 +338,9 @@ private fun RetroHallAppContent(
                 AppRoute.Settings -> SettingsScreen(
                     settings = settings,
                     cacheMaintenance = cacheMaintenance,
+                    coreCatalogClient = coreCatalogClient,
+                    coreDownloadManager = coreDownloadManager,
+                    coreSelectionStore = coreSelectionStore,
                     onCacheCleared = { coverReloadTick++ },
                     onUpdateSettings = { next ->
                         scope.launch { userSettingsStore.update(next) }

@@ -17,4 +17,8 @@ data class LocalGame(
     val hotness: Double? = null,
     val screenshots: List<String> = emptyList(),
     val logos: List<String> = emptyList(),
+    val categoryId: String = "",
+    val platformId: String = "",
+    val runtimeFamily: String = "",
+    val detailUrl: String = "",
 )

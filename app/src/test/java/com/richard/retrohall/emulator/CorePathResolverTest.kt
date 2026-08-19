@@ -1,5 +1,6 @@
 package com.richard.retrohall.emulator
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -11,7 +12,7 @@ class CorePathResolverTest {
     val temp = TemporaryFolder()
 
     @Test
-    fun resolvesNesCoreForFirstAvailableAbi() {
+    fun resolvesNesCoreForFirstAvailableAbi() = runBlocking {
         val filesRoot = temp.newFolder("files")
         val core = filesRoot.resolve("cores/arm64-v8a/fceumm_libretro_android.so")
         core.parentFile?.mkdirs()
@@ -23,7 +24,7 @@ class CorePathResolverTest {
     }
 
     @Test
-    fun returnsNullWhenPlatformIsUnsupported() {
+    fun returnsNullWhenPlatformIsUnsupported() = runBlocking {
         val filesRoot = temp.newFolder("files")
         val core = filesRoot.resolve("cores/arm64-v8a/fceumm_libretro_android.so")
         core.parentFile?.mkdirs()

@@ -5,13 +5,20 @@ import androidx.room.Room
 import com.richard.retrohall.data.cache.CacheManager
 import com.richard.retrohall.data.bootstrap.AppBootstrapper
 import com.richard.retrohall.data.db.RetroHallDatabase
+import com.richard.retrohall.data.db.MIGRATION_4_5
 import com.richard.retrohall.data.assets.PrivateAssetInitializer
 import com.richard.retrohall.data.game.GitHubGameCatalogClient
+import com.richard.retrohall.data.game.ContentDownloadManager
 import com.richard.retrohall.data.game.CoverDownloader
 import com.richard.retrohall.data.game.GameRepository
 import com.richard.retrohall.data.game.HasheousGameMetadataClient
+import com.richard.retrohall.data.game.ResourceCatalogClient
+import com.richard.retrohall.data.game.ResourceRepositoryConfig
 import com.richard.retrohall.data.game.RomDownloadManager
 import com.richard.retrohall.data.game.ZhMetadataClient
+import com.richard.retrohall.data.core.CoreCatalogClient
+import com.richard.retrohall.data.core.CoreDownloadManager
+import com.richard.retrohall.data.core.CoreSelectionStore
 import com.richard.retrohall.data.save.SaveStateRepository
 import com.richard.retrohall.data.settings.UserSettingsStore
 import com.richard.retrohall.domain.game.CoverImageLoader
@@ -29,7 +36,10 @@ class RetroHallDependencies private constructor(context: Context) {
         appContext,
         RetroHallDatabase::class.java,
         "retrohall.db",
-    ).fallbackToDestructiveMigration(dropAllTables = true).build()
+    )
+        .addMigrations(MIGRATION_4_5)
+        .fallbackToDestructiveMigration(dropAllTables = true)
+        .build()
 
     val gameRepository: GameRepository = GameRepository(
         database.localGameDao(),
@@ -37,14 +47,20 @@ class RetroHallDependencies private constructor(context: Context) {
         HasheousGameMetadataClient(appContext),
         ZhMetadataClient(),
     )
+    val resourceCatalogClient: ResourceCatalogClient =
+        ResourceCatalogClient(ResourceRepositoryConfig.GAME_CATALOG_BASE_URL)
     val romDownloadManager: RomDownloadManager = RomDownloadManager(appContext)
+    val contentDownloadManager: ContentDownloadManager = ContentDownloadManager(appContext)
     val coverDownloader: CoverDownloader = CoverDownloader(appContext)
     val saveStateRepository: SaveStateRepository = SaveStateRepository(appContext, database.saveStateDao())
-    val emulatorSessionFactory: EmulatorSessionFactory = EmulatorSessionFactory(appContext)
+    val coreCatalogClient: CoreCatalogClient = CoreCatalogClient(ResourceRepositoryConfig.CORE_CATALOG_BASE_URL)
+    val coreSelectionStore: CoreSelectionStore = CoreSelectionStore(appContext)
+    val coreDownloadManager: CoreDownloadManager = CoreDownloadManager(appContext)
+    val emulatorSessionFactory: EmulatorSessionFactory = EmulatorSessionFactory(appContext, coreCatalogClient, coreSelectionStore)
     val userSettingsStore: UserSettingsStore = UserSettingsStore(appContext)
     val privateAssetInitializer: PrivateAssetInitializer = PrivateAssetInitializer(appContext, database.localGameDao())
     val cacheManager: CacheManager = CacheManager(appContext)
-    val appBootstrapper: AppBootstrapper = AppBootstrapper(privateAssetInitializer, gameRepository)
+    val appBootstrapper: AppBootstrapper = AppBootstrapper(privateAssetInitializer, gameRepository, resourceCatalogClient)
     val coverImageLoader: CoverImageLoader = coverDownloader
     val saveStateStore: SaveStateStore = saveStateRepository
     val cacheMaintenance: CacheMaintenance = cacheManager

@@ -93,11 +93,9 @@ class GitHubGameCatalogClient(
     }
 
     companion object {
-        const val DEFAULT_MANIFEST_URL =
-            "https://richard2091.github.io/FC_ROMS/manifest.v1.json"
-        val DEFAULT_MANIFEST_URLS = FcRomsSourceResolver.expand(
-            "https://raw.githubusercontent.com/Richard2091/FC_ROMS/main/manifest.v1.json",
-        )
+        const val DEFAULT_MANIFEST_URL = "https://richard2091.github.io/RetroGame/legacy/manifest.v1.json"
+        val DEFAULT_MANIFEST_URLS = ResourceRepositoryConfig.LEGACY_MANIFEST_URLS
+            .flatMap { FcRomsSourceResolver.expand(it) }
     }
 }
 

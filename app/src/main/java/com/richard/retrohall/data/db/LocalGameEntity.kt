@@ -22,6 +22,10 @@ data class LocalGameEntity(
     val hotness: Double? = null,
     val screenshots: List<String> = emptyList(),
     val logos: List<String> = emptyList(),
+    val categoryId: String = "",
+    val platformId: String = "",
+    val runtimeFamily: String = "",
+    val detailUrl: String = "",
 ) {
     fun toDomain(): LocalGame = LocalGame(
         id = id,
@@ -40,6 +44,10 @@ data class LocalGameEntity(
         hotness = hotness,
         screenshots = screenshots,
         logos = logos,
+        categoryId = categoryId,
+        platformId = platformId,
+        runtimeFamily = runtimeFamily,
+        detailUrl = detailUrl,
     )
 }
 
@@ -60,4 +68,8 @@ fun LocalGame.toEntity(): LocalGameEntity = LocalGameEntity(
     hotness = hotness,
     screenshots = screenshots,
     logos = logos,
+    categoryId = categoryId,
+    platformId = platformId,
+    runtimeFamily = runtimeFamily,
+    detailUrl = detailUrl,
 )

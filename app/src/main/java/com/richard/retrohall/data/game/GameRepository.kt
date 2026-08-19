@@ -3,6 +3,8 @@ package com.richard.retrohall.data.game
 import com.richard.retrohall.data.assets.FakeGameCatalog
 import com.richard.retrohall.data.db.LocalGameDao
 import com.richard.retrohall.data.db.toEntity
+import com.richard.retrohall.domain.game.GameDetail
+import com.richard.retrohall.domain.game.GameListItem
 import com.richard.retrohall.domain.game.LocalGame
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -46,6 +48,44 @@ class GameRepository(
         // 写入公开仓库允许保留的假数据，供无私有资源时开发和演示。
         localGameDao.upsertAll(FakeGameCatalog.games.map { it.toEntity() })
         return FakeGameCatalog.games.size
+    }
+
+    /**
+     * 从资源仓库 v2 目录同步游戏索引（优先走 v2，失败返回 0 由调用方回退 v1）。
+     *
+     * @return 本次写入的游戏数量。
+     */
+    suspend fun syncFromResourceCatalog(client: ResourceCatalogClient): Int {
+        return try {
+            val index = client.fetchIndex()
+            val items = mutableListOf<GameListItem>()
+            val allCategory = index.category(index.defaultCategoryId)
+            if (allCategory != null) {
+                items += client.fetchCategoryList(allCategory.listUrl)
+            } else {
+                for (category in index.categories) {
+                    if (category.id == index.defaultCategoryId) continue
+                    items += client.fetchCategoryList(category.listUrl)
+                }
+            }
+            val existingById = localGameDao.getAll().associateBy { it.id }
+            val remoteGames = items.mapNotNull { item ->
+                val existing = existingById[item.id]
+                if (existing != null) {
+                    item.toLocalGame(
+                        favorite = existing.favorite,
+                        lastPlayedAt = existing.lastPlayedAt,
+                        totalPlayTimeMillis = existing.totalPlayTimeMillis,
+                    )
+                } else {
+                    item.toLocalGame()
+                }
+            }
+            localGameDao.upsertAll(remoteGames.map { it.toEntity() })
+            remoteGames.size
+        } catch (error: Exception) {
+            0
+        }
     }
 
     /**
@@ -190,4 +230,41 @@ class GameRepository(
         val additionalMillis = (endedAt - startedAt).coerceAtLeast(0L)
         localGameDao.updatePlayStats(gameId, endedAt, additionalMillis)
     }
+
+    /**
+     * 拉取并缓存游戏详情，返回 [GameDetail]。
+     *
+     * 详情页按需调用；离线时抛出异常由调用方使用最近一次缓存。
+     */
+    suspend fun fetchGameDetail(
+        client: ResourceCatalogClient,
+        game: LocalGame,
+        cachedDetail: GameDetail?,
+    ): GameDetail {
+        return if (cachedDetail != null && cachedDetail.id == game.id) {
+            cachedDetail
+        } else {
+            client.fetchDetail(game.detailUrl)
+        }
+    }
 }
+
+private fun GameListItem.toLocalGame(
+    favorite: Boolean = false,
+    lastPlayedAt: Long? = null,
+    totalPlayTimeMillis: Long = 0L,
+): LocalGame = LocalGame(
+    id = id,
+    title = displayTitle(),
+    platform = platformName.ifBlank { primaryPlatformId },
+    category = categoryId,
+    categoryId = categoryId,
+    platformId = primaryPlatformId,
+    runtimeFamily = runtimeFamily,
+    detailUrl = detailUrl,
+    coverPath = coverUrl,
+    romPath = "",
+    favorite = favorite,
+    lastPlayedAt = lastPlayedAt,
+    totalPlayTimeMillis = totalPlayTimeMillis,
+)

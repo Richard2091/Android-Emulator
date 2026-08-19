@@ -110,6 +110,7 @@ internal fun DetailScreen(
     var showDeleteDialog by remember(game.id) { mutableStateOf(false) }
     var busy by remember(game.id) { mutableStateOf(false) }
     var screenshotViewerIndex by remember(game.id) { mutableStateOf(-1) }
+    val unsupportedRuntime = game.runtimeFamily.isNotBlank() && game.runtimeFamily != "libretro"
     val saveStates by saveStateStore.observeForGame(game.id).collectAsState(initial = emptyList())
     val selectedSaveState = saveStates.firstOrNull { it.id == selectedSaveId } ?: saveStates.firstOrNull()
     val selectedSaveName = selectedSaveState?.displayName() ?: "新存档"
@@ -163,7 +164,12 @@ internal fun DetailScreen(
                             HorizontalDivider(color = dividerColor)
                             Spacer(Modifier.height(if (dense) 10.dp else 16.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(if (dense) 10.dp else 18.dp)) {
-                                DetailInfoItem("游戏格式", game.platform, valueSize = if (dense) 14.sp else 15.sp, modifier = Modifier.weight(1f))
+                                DetailInfoItem(
+                                    "游戏格式",
+                                    if (game.runtimeFamily.isBlank()) game.platform else game.runtimeFamily,
+                                    valueSize = if (dense) 14.sp else 15.sp,
+                                    modifier = Modifier.weight(1f),
+                                )
                                 DetailInfoItem("最近游玩", formatTimestamp(game.lastPlayedAt), valueSize = if (dense) 14.sp else 15.sp, modifier = Modifier.weight(1f))
                                 DetailInfoItem("游戏时长", formatPlayTime(game.totalPlayTimeMillis), valueSize = if (dense) 14.sp else 15.sp, modifier = Modifier.weight(1f))
                                 DetailInfoItem("ROM 大小", if (busy) "正在下载" else downloadedSizeText, valueSize = if (dense) 14.sp else 15.sp, modifier = Modifier.weight(1f))
@@ -175,16 +181,22 @@ internal fun DetailScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(if (dense) 12.dp else 18.dp)) {
                             HallActionButton(
                                 when {
+                                    unsupportedRuntime -> "暂不支持"
                                     isDownloaded -> "开始游戏"
                                     busy -> "下载中"
                                     else -> "下载"
                                 },
                                 focused = true,
                                 compact = detailActionCompact,
-                                icon = if (isDownloaded) Icons.Outlined.PlayArrow else Icons.Outlined.Download,
+                                icon = when {
+                                    unsupportedRuntime -> null
+                                    isDownloaded -> Icons.Outlined.PlayArrow
+                                    else -> Icons.Outlined.Download
+                                },
                                 iconSize = if (dense) 26.dp else 30.dp,
-                                enabled = !busy,
+                                enabled = !busy && !unsupportedRuntime,
                                 onClick = {
+                                    if (unsupportedRuntime) return@HallActionButton
                                     if (isDownloaded) {
                                         onStart()
                                     } else {

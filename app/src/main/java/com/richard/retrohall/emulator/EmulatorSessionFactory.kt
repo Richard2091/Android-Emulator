@@ -2,6 +2,8 @@ package com.richard.retrohall.emulator
 
 import android.content.Context
 import android.os.Build
+import com.richard.retrohall.data.core.CoreCatalogClient
+import com.richard.retrohall.data.core.CoreSelectionStore
 import com.richard.retrohall.domain.game.LocalGame
 
 data class EmulatorLaunchResult(
@@ -9,12 +11,21 @@ data class EmulatorLaunchResult(
     val message: String?,
 )
 
-class EmulatorSessionFactory(context: Context) {
+class EmulatorSessionFactory(
+    context: Context,
+    private val coreCatalogClient: CoreCatalogClient,
+    private val coreSelectionStore: CoreSelectionStore,
+) {
     private val filesRoot = context.applicationContext.filesDir
-    private val corePathResolver = CorePathResolver(filesRoot, Build.SUPPORTED_ABIS.toList())
+    private val corePathResolver = CorePathResolver(
+        filesRoot,
+        Build.SUPPORTED_ABIS.toList(),
+        coreSelectionStore,
+    )
 
-    fun createStartedSession(game: LocalGame): EmulatorLaunchResult {
-        val core = corePathResolver.resolve(game.platform)
+    suspend fun createStartedSession(game: LocalGame): EmulatorLaunchResult {
+        val catalog = runCatching { coreCatalogClient.fetchCatalog() }.getOrNull()
+        val core = corePathResolver.resolve(game.platform, catalog)
             ?: return fakeSession(game, "没有检测到 ${game.platform} 的模拟器核心，已使用兼容演示模式。")
 
         val realSession = runCatching {

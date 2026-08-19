@@ -81,6 +81,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.zIndex
 import com.richard.retrohall.data.game.RomDownloadManager
+import com.richard.retrohall.data.game.ContentDownloadManager
 import com.richard.retrohall.domain.game.CoverImageLoader
 import com.richard.retrohall.domain.game.LocalGame
 import com.richard.retrohall.ui.HallIcon
@@ -119,6 +120,7 @@ internal data class HallFilters(
 internal fun HallScreen(
     games: List<LocalGame>,
     romDownloadManager: RomDownloadManager,
+    contentDownloadManager: ContentDownloadManager,
     downloadVersion: Int,
     selectedSection: String,
     filters: HallFilters,
@@ -156,8 +158,10 @@ internal fun HallScreen(
         listOf("全部", "FC") + all.filter { it != "FC" && it != "全部" }
     }
 
-    val downloadedIds = remember(romDownloadManager, games, downloadVersion) {
-        games.filter { romDownloadManager.isDownloaded(it) }.map { it.id }.toSet()
+    val downloadedIds = remember(romDownloadManager, contentDownloadManager, games, downloadVersion) {
+        games.filter {
+            contentDownloadManager.isDownloaded(it.id) || romDownloadManager.isDownloaded(it)
+        }.map { it.id }.toSet()
     }
     val filtered = games.filter { game ->
         val sectionMatches = when (selectedSection) {

@@ -6,7 +6,7 @@ import androidx.room.TypeConverters
 
 @Database(
     entities = [LocalGameEntity::class, SaveStateEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

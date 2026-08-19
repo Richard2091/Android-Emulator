@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +39,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.richard.retrohall.data.core.CoreCatalogClient
+import com.richard.retrohall.data.core.CoreDownloadManager
+import com.richard.retrohall.data.core.CoreSelectionStore
 import com.richard.retrohall.domain.settings.AspectRatio
 import com.richard.retrohall.domain.settings.CacheMaintenance
 import com.richard.retrohall.domain.settings.ControlMode
@@ -60,6 +64,9 @@ import kotlinx.coroutines.launch
 internal fun SettingsScreen(
     settings: UserSettings,
     cacheMaintenance: CacheMaintenance,
+    coreCatalogClient: CoreCatalogClient,
+    coreDownloadManager: CoreDownloadManager,
+    coreSelectionStore: CoreSelectionStore,
     onCacheCleared: () -> Unit,
     onUpdateSettings: (UserSettings) -> Unit,
     onSelectLibrary: () -> Unit,
@@ -67,6 +74,8 @@ internal fun SettingsScreen(
     onSelectFavorites: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
+    var showCoreManager by remember { mutableStateOf(false) }
+
     AppShell(
         selectedNav = "设置",
         onSelectLibrary = onSelectLibrary,
@@ -83,7 +92,62 @@ internal fun SettingsScreen(
             item { SettingsAudioSection(settings, onUpdateSettings, Modifier.fillMaxWidth(), dense = false) }
             item { SettingsControlSection(settings, onUpdateSettings, Modifier.fillMaxWidth(), dense = false) }
             item { SettingsGameSection(settings, onUpdateSettings, Modifier.fillMaxWidth(), dense = false) }
+            item {
+                SettingsCoreSection(
+                    coreSelectionStore = coreSelectionStore,
+                    onOpenCoreManager = { showCoreManager = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    dense = false,
+                )
+            }
             item { SettingsSystemSection(cacheMaintenance, onCacheCleared, Modifier.fillMaxWidth(), dense = false) }
+        }
+    }
+
+    if (showCoreManager) {
+        CoreManagerDialog(
+            coreCatalogClient = coreCatalogClient,
+            coreDownloadManager = coreDownloadManager,
+            coreSelectionStore = coreSelectionStore,
+            onDismiss = { showCoreManager = false },
+        )
+    }
+}
+
+@Composable
+private fun SettingsCoreSection(
+    coreSelectionStore: CoreSelectionStore,
+    onOpenCoreManager: () -> Unit,
+    modifier: Modifier = Modifier,
+    dense: Boolean = false,
+) {
+    val selections by coreSelectionStore.selections.collectAsState(initial = emptyMap())
+    val currentCore = remember(selections) {
+        selections["nes"]?.takeIf { it.isNotBlank() } ?: "默认"
+    }
+    SettingsSection(title = "核心", modifier = modifier, dense = dense) {
+        SettingRow("核心管理", first = true, dense = dense) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    "当前：$currentCore",
+                    color = UiText,
+                    fontSize = if (dense) 14.sp else 15.sp,
+                    fontWeight = FontWeight.Black,
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.10f))
+                        .border(1.dp, UiCyan, RoundedCornerShape(10.dp))
+                        .clickable(onClick = onOpenCoreManager)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text("管理", color = UiCyan, fontSize = if (dense) 13.sp else 14.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            }
         }
     }
 }
