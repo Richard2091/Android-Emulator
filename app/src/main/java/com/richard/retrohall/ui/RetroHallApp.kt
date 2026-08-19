@@ -1,11 +1,13 @@
 package com.richard.retrohall.ui
 
+import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.BlurMaskFilter
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -249,15 +251,19 @@ private fun RetroHallAppContent(
     coverImageLoader: CoverImageLoader,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Hall) }
     var launchMessage by remember { mutableStateOf<String?>(null) }
     var selectedSaveIds by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var selectedHallSection by rememberSaveable { mutableStateOf("游戏库") }
+    var detailSourceSection by rememberSaveable { mutableStateOf("游戏库") }
     var hallFilters by rememberSaveable { mutableStateOf(HallFilters()) }
     var recentFilters by rememberSaveable { mutableStateOf(HallFilters()) }
     var favoritesFilters by rememberSaveable { mutableStateOf(HallFilters()) }
     var downloadVersion by remember { mutableStateOf(0) }
     var coverReloadTick by remember { mutableStateOf(0L) }
+    var exitConfirmTick by remember { mutableStateOf(0L) }
+    var hallExitToast by remember { mutableStateOf<String?>(null) }
     val libraryGridState = rememberLazyGridState()
     val recentGridState = rememberLazyGridState()
     val favoritesGridState = rememberLazyGridState()
@@ -265,12 +271,37 @@ private fun RetroHallAppContent(
     val settings by userSettingsStore.settings.collectAsState(initial = UserSettings())
 
     fun openHall(section: String = "游戏库") {
+        exitConfirmTick = 0L
         selectedHallSection = section
         route = AppRoute.Hall
     }
 
+    fun handleHallBack() {
+        val now = System.currentTimeMillis()
+        if (exitConfirmTick == 0L || now - exitConfirmTick > 3000L) {
+            exitConfirmTick = now
+            hallExitToast = "再按一次返回键退出软件"
+        } else {
+            (context as? Activity)?.finish()
+        }
+    }
+
+    BackHandler(enabled = route !is AppRoute.Game) {
+        when (val current = route) {
+            is AppRoute.Hall -> handleHallBack()
+            is AppRoute.Detail -> openHall(detailSourceSection)
+            is AppRoute.SaveManager -> route = AppRoute.Detail(current.game)
+            AppRoute.Settings -> openHall("游戏库")
+            is AppRoute.Game -> Unit
+        }
+    }
+
     LaunchedEffect(appBootstrapper) {
         appBootstrapper.bootstrap()
+    }
+
+    LaunchedEffect(route) {
+        if (route !is AppRoute.Hall) hallExitToast = null
     }
 
     MaterialTheme {
@@ -302,8 +333,12 @@ private fun RetroHallAppContent(
                         val changed = gameRepository.refreshCovers()
                         if (changed) coverReloadTick++
                     },
-                    onSelectSection = { selectedHallSection = it },
+                    onSelectSection = {
+                        exitConfirmTick = 0L
+                        selectedHallSection = it
+                    },
                     onOpenGame = {
+                        detailSourceSection = selectedHallSection
                         launchMessage = null
                         route = AppRoute.Detail(it)
                     },
@@ -425,6 +460,7 @@ private fun RetroHallAppContent(
                 )
             }
         }
+        TopToast(hallExitToast, onDismiss = { hallExitToast = null })
     }
 }
 
@@ -726,6 +762,13 @@ private fun HallScreen(
         GameSort.PlayTime -> filtered.sortedByDescending { it.totalPlayTimeMillis }
     }
     val showSearch = searchVisible
+
+    BackHandler(enabled = searchVisible || selectedSection != "游戏库") {
+        when {
+            searchVisible -> searchVisible = false
+            selectedSection != "游戏库" -> onSelectSection("游戏库")
+        }
+    }
 
     LaunchedEffect(searchVisible, toolbarInteractionTick) {
         if (searchVisible) {
@@ -1243,6 +1286,7 @@ private fun ToolbarSelect(
     LaunchedEffect(toolbarVisible) {
         if (!toolbarVisible) expanded = false
     }
+    BackHandler(enabled = expanded) { expanded = false }
     Box {
         Row(
             modifier = Modifier
@@ -2412,6 +2456,14 @@ private fun GameScreen(
     fun pauseGame() {
         session.pause()
         paused = true
+    }
+
+    BackHandler {
+        when {
+            settingsVisible -> settingsVisible = false
+            paused -> onExit()
+            else -> pauseGame()
+        }
     }
 
     AppBackground(contentPadding = PaddingValues(vertical = 6.dp, horizontal = 12.dp)) {
