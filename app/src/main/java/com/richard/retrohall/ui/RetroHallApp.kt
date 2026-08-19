@@ -101,6 +101,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -1584,7 +1585,6 @@ private fun DetailScreen(
             val descSize = if (dense) 16.sp else 20.sp
             val descLineHeight = if (dense) 23.sp else 30.sp
             val detailActionCompact = dense
-            val lowerHalfWidth = maxWidth / 2
 
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(topGap), modifier = Modifier.height(coverSize)) {
@@ -1664,16 +1664,19 @@ private fun DetailScreen(
                         .padding(top = if (dense) 14.dp else 22.dp),
                     contentAlignment = Alignment.TopStart,
                 ) {
-                    DetailLowerSection(
-                        game = game,
-                        dense = dense,
-                        descSize = descSize,
-                        descLineHeight = descLineHeight,
-                        coverReloadTick = coverReloadTick,
-                        coverImageLoader = coverImageLoader,
-                        halfWidth = lowerHalfWidth,
-                        onOpenScreenshot = { screenshotViewerIndex = it },
-                    )
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        DetailLowerSection(
+                            game = game,
+                            dense = dense,
+                            descSize = descSize,
+                            descLineHeight = descLineHeight,
+                            coverReloadTick = coverReloadTick,
+                            coverImageLoader = coverImageLoader,
+                            maxWidth = maxWidth,
+                            maxHeight = maxHeight,
+                            onOpenScreenshot = { screenshotViewerIndex = it },
+                        )
+                    }
                 }
             }
 
@@ -1728,21 +1731,36 @@ private fun DetailLowerSection(
     descLineHeight: TextUnit,
     coverReloadTick: Long,
     coverImageLoader: CoverImageLoader,
-    halfWidth: Dp,
+    maxWidth: Dp,
+    maxHeight: Dp,
     onOpenScreenshot: (Int) -> Unit,
 ) {
     val screenshots = game.screenshots.ifEmpty { game.logos }
     val scrollState = rememberScrollState()
+    val spacing = if (dense) 12.dp else 18.dp
+    val singleShot = screenshots.size == 1
+    var shotRatio by remember(game.id, screenshots.size, coverReloadTick) { mutableFloatStateOf(1f) }
+    val minIntroWidth = maxWidth * 0.38f
+    val shotWidth = if (singleShot) {
+        (maxHeight * shotRatio).coerceAtMost(maxWidth - minIntroWidth - spacing)
+    } else {
+        Dp.Unspecified
+    }
+    val introWidth = if (singleShot) {
+        (maxWidth - spacing - shotWidth).coerceAtLeast(minIntroWidth)
+    } else {
+        maxWidth / 2
+    }
 
     Row(
         modifier = Modifier
             .fillMaxSize()
             .horizontalScroll(scrollState),
-        horizontalArrangement = Arrangement.spacedBy(if (dense) 12.dp else 18.dp),
+        horizontalArrangement = Arrangement.spacedBy(spacing),
     ) {
         Box(
             modifier = Modifier
-                .width(halfWidth)
+                .width(introWidth)
                 .fillMaxHeight()
                 .shadow(26.dp, RoundedCornerShape(18.dp), ambientColor = UiCyan.copy(alpha = 0.18f), spotColor = UiCyan.copy(alpha = 0.18f))
                 .background(UiPanelSoft, RoundedCornerShape(18.dp))
@@ -1769,8 +1787,10 @@ private fun DetailLowerSection(
                     url = url,
                     index = index,
                     dense = dense,
+                    widthOverride = if (singleShot) shotWidth else null,
                     coverReloadTick = coverReloadTick,
                     coverImageLoader = coverImageLoader,
+                    onAspectRatio = { ratio -> if (singleShot) shotRatio = ratio },
                     onClick = { onOpenScreenshot(index) },
                 )
             }
@@ -1813,8 +1833,10 @@ private fun ScreenshotCard(
     url: String,
     index: Int,
     dense: Boolean,
+    widthOverride: Dp?,
     coverReloadTick: Long,
     coverImageLoader: CoverImageLoader,
+    onAspectRatio: (Float) -> Unit,
     onClick: () -> Unit,
 ) {
     val bitmap by produceState<ImageBitmap?>(initialValue = null, url, coverReloadTick) {
@@ -1839,10 +1861,16 @@ private fun ScreenshotCard(
     }
     val palette = remember(index) { gamePaletteForIndex(index) }
 
-    val heightRatio = bitmap?.let { it.width.toFloat() / it.height.toFloat() } ?: 1f
+    val loadedRatio = bitmap?.let { it.width.toFloat() / it.height.toFloat() }
+    LaunchedEffect(bitmap) {
+        if (loadedRatio != null) onAspectRatio(loadedRatio)
+    }
+    val heightRatio = loadedRatio ?: 1f
+    val sizeModifier = if (widthOverride != null) Modifier.width(widthOverride) else Modifier.aspectRatio(heightRatio)
+
     Box(
         modifier = Modifier
-            .aspectRatio(heightRatio)
+            .then(sizeModifier)
             .fillMaxHeight()
             .shadow(if (dense) 12.dp else 20.dp, RoundedCornerShape(16.dp), ambientColor = palette.first.copy(alpha = 0.4f), spotColor = palette.second.copy(alpha = 0.4f))
             .background(Brush.linearGradient(listOf(palette.first.copy(alpha = 0.9f), palette.second.copy(alpha = 0.82f))), RoundedCornerShape(16.dp))
@@ -1861,12 +1889,16 @@ private fun ScreenshotCard(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    (index + 1).toString(),
-                    color = UiText.copy(alpha = 0.6f),
-                    fontSize = if (dense) 28.sp else 44.sp,
-                    fontWeight = FontWeight.Black,
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CoverLoadingIndicator(size = 40.dp)
+                    Spacer(Modifier.height(if (dense) 6.dp else 10.dp))
+                    Text(
+                        (index + 1).toString(),
+                        color = UiText.copy(alpha = 0.6f),
+                        fontSize = if (dense) 16.sp else 22.sp,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
             }
         }
     }
@@ -1928,7 +1960,7 @@ private fun ScreenshotViewer(
                         .padding(horizontal = 96.dp, vertical = 24.dp),
                 )
             } else {
-                Text("加载中…", color = UiMuted, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                CoverLoadingIndicator(size = 56.dp)
             }
 
             if (urls.size > 1) {
