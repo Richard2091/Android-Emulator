@@ -3,6 +3,8 @@ package com.richard.retrohall.data.save
 import android.content.Context
 import com.richard.retrohall.data.db.SaveStateDao
 import com.richard.retrohall.data.db.SaveStateEntity
+import com.richard.retrohall.domain.save.SavePathResolver
+import com.richard.retrohall.domain.save.SaveSlot
 import com.richard.retrohall.domain.save.SaveStateSlot
 import com.richard.retrohall.domain.save.SaveStateStore
 import kotlinx.coroutines.Dispatchers
@@ -21,15 +23,23 @@ class SaveStateRepository(
         return saveStateDao.observeForGame(gameId).map { slots -> slots.map { it.toSlot() } }
     }
 
-    override suspend fun addSlot(gameId: String): SaveStateSlot = withContext(Dispatchers.IO) {
-        val nextIndex = nextManualIndex(gameId)
+    override suspend fun upsert(gameId: String, slot: SaveSlot): SaveStateSlot = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
+        val entity = entityFor(gameId, slot, now)
+        saveStateDao.upsert(entity)
+        entity.toSlot()
+    }
+
+    override suspend fun addSlot(gameId: String): SaveStateSlot = withContext(Dispatchers.IO) {
+        val nextIndex = nextManualIndex(gameId) ?: throw IllegalStateException("手动存档槽已满")
+        val now = System.currentTimeMillis()
+        val slot = SaveSlot.Manual(nextIndex)
         val entity = SaveStateEntity(
-            id = saveId(gameId, nextIndex),
+            id = saveId(gameId, slot),
             gameId = gameId,
             slotType = "manual",
             slotIndex = nextIndex,
-            filePath = stateFile(gameId, nextIndex).absolutePath,
+            filePath = stateFile(gameId, slot).absolutePath,
             createdAt = now,
             updatedAt = now,
         )
@@ -47,21 +57,21 @@ class SaveStateRepository(
 
     override suspend fun deleteForGame(gameId: String) = withContext(Dispatchers.IO) {
         File(filesRoot, "saves/states/$gameId").deleteRecursively()
+        File(SavePathResolver.sramPath(filesRoot.absolutePath, gameId)).takeIf { it.exists() }?.delete()
         saveStateDao.deleteByGameId(gameId)
     }
 
     override suspend fun copy(slotId: String): SaveStateSlot? = withContext(Dispatchers.IO) {
         val saveState = saveStateDao.getById(slotId) ?: return@withContext null
-        val nextIndex = nextManualIndex(saveState.gameId)
+        val nextIndex = nextManualIndex(saveState.gameId) ?: return@withContext null
         val now = System.currentTimeMillis()
-        val target = stateFile(saveState.gameId, nextIndex)
+        val target = stateFile(saveState.gameId, SaveSlot.Manual(nextIndex))
         val source = File(saveState.filePath)
-        if (source.isFile && source.length() > 0L) {
-            target.parentFile?.mkdirs()
-            source.copyTo(target, overwrite = true)
-        }
+        if (!source.isFile) return@withContext null
+        target.parentFile?.mkdirs()
+        source.copyTo(target, overwrite = true)
         val entity = SaveStateEntity(
-            id = saveId(saveState.gameId, nextIndex),
+            id = saveId(saveState.gameId, SaveSlot.Manual(nextIndex)),
             gameId = saveState.gameId,
             slotType = "manual",
             slotIndex = nextIndex,
@@ -73,16 +83,42 @@ class SaveStateRepository(
         entity.toSlot()
     }
 
-    private suspend fun nextManualIndex(gameId: String): Int {
+    private fun entityFor(gameId: String, slot: SaveSlot, now: Long): SaveStateEntity {
+        return when (slot) {
+            SaveSlot.Auto -> SaveStateEntity(
+                id = saveId(gameId, slot),
+                gameId = gameId,
+                slotType = "auto",
+                slotIndex = null,
+                filePath = stateFile(gameId, slot).absolutePath,
+                createdAt = now,
+                updatedAt = now,
+            )
+            is SaveSlot.Manual -> SaveStateEntity(
+                id = saveId(gameId, slot),
+                gameId = gameId,
+                slotType = "manual",
+                slotIndex = slot.index,
+                filePath = stateFile(gameId, slot).absolutePath,
+                createdAt = now,
+                updatedAt = now,
+            )
+        }
+    }
+
+    private suspend fun nextManualIndex(gameId: String): Int? {
         val used = saveStateDao.getForGame(gameId).mapNotNull { it.slotIndex }.toSet()
-        return generateSequence(1) { it + 1 }.first { it !in used }
+        return (1..3).firstOrNull { it !in used }
     }
 
-    private fun stateFile(gameId: String, index: Int): File {
-        return File(filesRoot, "saves/states/$gameId/manual-$index.state")
+    private fun stateFile(gameId: String, slot: SaveSlot): File {
+        return File(SavePathResolver.statePath(filesRoot.absolutePath, gameId, slot))
     }
 
-    private fun saveId(gameId: String, index: Int): String = "$gameId-manual-$index"
+    private fun saveId(gameId: String, slot: SaveSlot): String = when (slot) {
+        SaveSlot.Auto -> "$gameId-auto"
+        is SaveSlot.Manual -> "$gameId-manual-${slot.index}"
+    }
 
     private fun SaveStateEntity.toSlot(): SaveStateSlot {
         return SaveStateSlot(

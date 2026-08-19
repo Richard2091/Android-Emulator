@@ -26,7 +26,9 @@ import com.richard.retrohall.data.game.RomDownloadManager
 import com.richard.retrohall.data.settings.UserSettingsStore
 import com.richard.retrohall.domain.game.CoverImageLoader
 import com.richard.retrohall.domain.game.LocalGame
+import com.richard.retrohall.domain.save.SaveSlot
 import com.richard.retrohall.domain.save.SaveStateStore
+import com.richard.retrohall.domain.save.toSaveSlot
 import com.richard.retrohall.domain.settings.CacheMaintenance
 import com.richard.retrohall.domain.settings.UserSettings
 import com.richard.retrohall.emulator.EmulatorSession
@@ -37,6 +39,7 @@ import com.richard.retrohall.ui.game.GameScreen
 import com.richard.retrohall.ui.hall.HallFilters
 import com.richard.retrohall.ui.hall.HallScreen
 import com.richard.retrohall.ui.save.SaveManagerScreen
+import com.richard.retrohall.ui.save.displayName
 import com.richard.retrohall.ui.settings.SettingsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -265,8 +268,12 @@ private fun RetroHallAppContent(
                     session = current.session,
                     settings = settings,
                     launchNotice = current.launchNotice,
+                    selectedSaveStates = saveStateStore.observeForGame(current.game.id).collectAsState(initial = emptyList()).value,
+                    selectedSaveId = selectedSaveIds[current.game.id],
+                    onPersistSaveState = { slot ->
+                        scope.launch { saveStateStore.upsert(current.game.id, slot) }
+                    },
                     onExit = {
-                        current.session.saveSram()
                         current.session.stop()
                         scope.launch {
                             gameRepository.recordPlaySession(current.game.id, current.startedAt)

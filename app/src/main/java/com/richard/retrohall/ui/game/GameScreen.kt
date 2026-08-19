@@ -45,6 +45,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -88,9 +89,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.richard.retrohall.domain.game.LocalGame
 import com.richard.retrohall.domain.input.GameAction
 import com.richard.retrohall.domain.save.SaveSlot
+import com.richard.retrohall.domain.save.SaveStateSlot
+import com.richard.retrohall.ui.save.displayName
+import com.richard.retrohall.domain.save.toSaveSlot
 import com.richard.retrohall.domain.settings.AspectRatio
 import com.richard.retrohall.domain.settings.ControlMode
 import com.richard.retrohall.domain.settings.UserSettings
@@ -115,6 +120,8 @@ import com.richard.retrohall.ui.components.TopToast
 import com.richard.retrohall.ui.gameSpeedLabel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -128,6 +135,9 @@ internal fun GameScreen(
     session: EmulatorSession,
     settings: UserSettings,
     launchNotice: String?,
+    selectedSaveStates: List<SaveStateSlot>,
+    selectedSaveId: String?,
+    onPersistSaveState: (SaveSlot) -> Unit,
     onExit: () -> Unit,
     onOpenSettings: () -> Unit,
     onUpdateSettings: (UserSettings) -> Unit,
@@ -144,6 +154,15 @@ internal fun GameScreen(
     val padOpacity = settings.virtualPadOpacity.coerceIn(0.2f, 1f)
     val padScale = minOf(settings.virtualPadScale.coerceIn(0.6f, 1.6f), 1.15f)
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val latestSession by rememberUpdatedState(session)
+    val latestSettings by rememberUpdatedState(settings)
+    val latestOnPersistSaveState by rememberUpdatedState(onPersistSaveState)
+    val selectedSaveState = selectedSaveStates.firstOrNull { it.id == selectedSaveId }
+        ?: selectedSaveStates.firstOrNull { it.slotType == "manual" }
+        ?: selectedSaveStates.firstOrNull()
+    val selectedSaveSlot = selectedSaveState?.toSaveSlot() ?: SaveSlot.Manual(1)
+    val selectedSaveLabel = selectedSaveState?.displayName() ?: "手动槽 1"
 
     val frame by session.frames.collectAsState()
     val frameAspectRatio = frame?.let {
@@ -158,9 +177,40 @@ internal fun GameScreen(
         session.setGameSpeed(settings.gameSpeed)
     }
 
+    fun persistCurrentProgress() {
+        val savedSram = latestSession.saveSram()
+        if (latestSettings.autoSaveStateEnabled &&
+            latestSession.state != EmulatorState.Stopped &&
+            latestSession.saveState(SaveSlot.Auto)
+        ) {
+            latestOnPersistSaveState(SaveSlot.Auto)
+        }
+        if (!savedSram) {
+            message = "进度保存失败"
+        }
+    }
+
+    fun exitGame() {
+        persistCurrentProgress()
+        session.stop()
+        onExit()
+    }
+
     LaunchedEffect(settings.controlMode, settings.virtualPadVisibility) {
         autoHidePadVisible = showPadAlways
         autoHideTicket += 1
+    }
+
+    DisposableEffect(lifecycleOwner, settings.autoSaveStateEnabled) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                persistCurrentProgress()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     LaunchedEffect(autoHideTicket, settings.controlMode, settings.virtualPadVisibility, paused, settingsVisible) {
@@ -216,7 +266,7 @@ internal fun GameScreen(
     BackHandler {
         when {
             settingsVisible -> settingsVisible = false
-            paused -> onExit()
+            paused -> exitGame()
             else -> pauseGame()
         }
     }
@@ -320,6 +370,7 @@ internal fun GameScreen(
     if (settingsVisible) {
         GameSettingsOverlay(
             settings = settings,
+            saveSlotLabel = selectedSaveLabel,
             onContinue = { resumeGame() },
             onVirtualPadVisibilityChange = { next ->
                 onUpdateSettings(settings.copy(virtualPadVisibility = next))
@@ -328,15 +379,16 @@ internal fun GameScreen(
                 onUpdateSettings(settings.copy(aspectRatio = next))
             },
             onSave = {
-                message = if (session.saveState(com.richard.retrohall.domain.save.SaveSlot.Manual(1))) {
-                    "已保存到手动槽 1"
+                message = if (session.saveState(selectedSaveSlot)) {
+                    onPersistSaveState(selectedSaveSlot)
+                    "已保存到$selectedSaveLabel"
                 } else {
                     "保存失败"
                 }
             },
             onLoad = {
-                message = if (session.loadState(com.richard.retrohall.domain.save.SaveSlot.Manual(1))) {
-                    "已读取手动槽 1"
+                message = if (session.loadState(selectedSaveSlot)) {
+                    "已读取$selectedSaveLabel"
                 } else {
                     "读档失败"
                 }
@@ -349,7 +401,7 @@ internal fun GameScreen(
             onGameSpeedChange = { speed ->
                 onUpdateSettings(settings.copy(gameSpeed = speed))
             },
-            onExit = onExit,
+            onExitGame = { exitGame() },
             onDismiss = { settingsVisible = false },
         )
     }
@@ -841,6 +893,7 @@ private fun RoundKey(
 @Composable
 private fun GameSettingsOverlay(
     settings: UserSettings,
+    saveSlotLabel: String,
     onContinue: () -> Unit,
     onVirtualPadVisibilityChange: (VirtualPadVisibility) -> Unit,
     onAspectRatioChange: (AspectRatio) -> Unit,
@@ -848,7 +901,7 @@ private fun GameSettingsOverlay(
     onLoad: () -> Unit,
     onReset: () -> Unit,
     onGameSpeedChange: (Float) -> Unit,
-    onExit: () -> Unit,
+    onExitGame: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var showResetConfirm by remember { mutableStateOf(false) }
@@ -879,7 +932,7 @@ private fun GameSettingsOverlay(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("设置", color = UiText, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                    Text("设置", color = UiText, fontSize = 20.sp, fontWeight = FontWeight.Black)
                 GamePanelButton("继续游戏", primary = true) { onContinue() }
                 HorizontalDivider(color = UiLine)
                 GameSettingRow("画面比例") {
@@ -908,6 +961,7 @@ private fun GameSettingsOverlay(
                     )
                 }
                 GameSettingRow("即时存档") {
+                    Text(saveSlotLabel, color = UiMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         GameSegButton("保存") { onSave() }
                         GameSegButton("读取") { onLoad() }
@@ -917,7 +971,7 @@ private fun GameSettingsOverlay(
                     GameSegButton("重置") { showResetConfirm = true }
                 }
                 HorizontalDivider(color = UiLine)
-                GamePanelButton("退出游戏", primary = false, danger = true) { onExit() }
+                GamePanelButton("退出游戏", primary = false, danger = true) { onExitGame() }
             }
         }
     }

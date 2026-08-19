@@ -20,7 +20,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -39,6 +42,7 @@ import com.richard.retrohall.ui.UiText
 import com.richard.retrohall.ui.components.AppShell
 import com.richard.retrohall.ui.components.EmptyPanel
 import com.richard.retrohall.ui.components.HallActionButton
+import com.richard.retrohall.ui.components.TopToast
 import com.richard.retrohall.ui.formatTimestamp
 import kotlinx.coroutines.launch
 
@@ -55,6 +59,7 @@ internal fun SaveManagerScreen(
     onOpenSettings: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    var message by remember { mutableStateOf<String?>(null) }
     val saveStates by saveStateStore.observeForGame(game.id).collectAsState(initial = emptyList())
 
     AppShell(
@@ -76,7 +81,13 @@ internal fun SaveManagerScreen(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HallActionButton("新增槽位", focused = true, compact = true) {
-                        scope.launch { saveStateStore.addSlot(game.id) }
+                        scope.launch {
+                            val added = runCatching { saveStateStore.addSlot(game.id) }.getOrElse {
+                                message = "手动存档槽已满"
+                                return@launch
+                            }
+                            message = "已新增${added.displayName()}"
+                        }
                     }
                     HallActionButton("返回详情", focused = false, compact = true, onClick = onBackToDetail)
                 }
@@ -95,14 +106,25 @@ internal fun SaveManagerScreen(
                             saveState = saveState,
                             selected = saveState.id == selectedSaveId,
                             onSelect = { onSelectSave(saveState) },
-                            onCopy = { scope.launch { saveStateStore.copy(saveState.id) } },
-                            onDelete = { scope.launch { saveStateStore.delete(saveState.id) } },
+                            onCopy = {
+                                scope.launch {
+                                    message = if (saveStateStore.copy(saveState.id) != null) "已复制存档" else "复制失败"
+                                }
+                            },
+                            onDelete = {
+                                scope.launch {
+                                    saveStateStore.delete(saveState.id)
+                                    message = "已删除存档"
+                                }
+                            },
                         )
                     }
                 }
             }
         }
     }
+
+    TopToast(message, onDismiss = { message = null })
 }
 
 @Composable

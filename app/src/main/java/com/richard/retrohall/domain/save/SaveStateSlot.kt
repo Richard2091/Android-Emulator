@@ -6,3 +6,10 @@ data class SaveStateSlot(
     val slotIndex: Int?,
     val updatedAt: Long?,
 )
+
+fun SaveStateSlot.toSaveSlot(): SaveSlot {
+    return when (slotType) {
+        "auto" -> SaveSlot.Auto
+        else -> SaveSlot.Manual(slotIndex ?: 1)
+    }
+}
