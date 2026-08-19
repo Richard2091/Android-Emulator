@@ -2590,7 +2590,6 @@ private fun GameScreen(
                                             PillButton(if (paused) "继续" else "暂停", padOpacity, danger = false, onInteraction = ::registerVirtualPadInteraction) {
                                                 if (paused) {
                                                     resumeGame()
-                                                    message = "已继续游戏"
                                                 } else {
                                                     pauseGame()
                                                 }
@@ -2654,14 +2653,12 @@ private fun GameScreen(
     if (settingsVisible) {
         GameSettingsOverlay(
             settings = settings,
-            onContinue = { resumeGame(); message = "已继续游戏" },
+            onContinue = { resumeGame() },
             onVirtualPadVisibilityChange = { next ->
                 onUpdateSettings(settings.copy(virtualPadVisibility = next))
-                message = if (next == VirtualPadVisibility.Visible) "虚拟按键：显示" else "虚拟按键：自动隐藏"
             },
             onAspectRatioChange = { next ->
                 onUpdateSettings(settings.copy(aspectRatio = next))
-                message = "画面比例：${aspectRatioLabel(next)}"
             },
             onSave = {
                 message = if (session.saveState(com.richard.retrohall.domain.save.SaveSlot.Manual(1))) {
@@ -2684,7 +2681,6 @@ private fun GameScreen(
             },
             onGameSpeedChange = { speed ->
                 onUpdateSettings(settings.copy(gameSpeed = speed))
-                message = "游戏速度：${gameSpeedLabel(speed)}"
             },
             onExit = onExit,
             onDismiss = { settingsVisible = false },
@@ -3108,6 +3104,7 @@ private fun GameSettingsOverlay(
     onExit: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var showResetConfirm by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -3170,12 +3167,26 @@ private fun GameSettingsOverlay(
                     }
                 }
                 GameSettingRow("重置游戏") {
-                    GameSegButton("重置") { onReset() }
+                    GameSegButton("重置") { showResetConfirm = true }
                 }
                 HorizontalDivider(color = UiLine)
                 GamePanelButton("退出游戏", primary = false, danger = true) { onExit() }
             }
         }
+    }
+
+    if (showResetConfirm) {
+        HallConfirmDialog(
+            title = "重置游戏",
+            message = "将清除当前游戏进度并重新开始，确定重置吗？",
+            confirmLabel = "重置",
+            dismissLabel = "取消",
+            onConfirm = {
+                showResetConfirm = false
+                onReset()
+            },
+            onDismiss = { showResetConfirm = false },
+        )
     }
 }
 

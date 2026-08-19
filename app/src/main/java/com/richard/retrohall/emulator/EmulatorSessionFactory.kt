@@ -31,10 +31,7 @@ class EmulatorSessionFactory(context: Context) {
             return fakeSession(game, "模拟器核心未能加载 ROM，已使用兼容演示模式。")
         }
 
-        return EmulatorLaunchResult(
-            session = realSession,
-            message = "已使用 ${core.descriptor.displayName} 核心启动游戏。",
-        )
+        return EmulatorLaunchResult(session = realSession, message = null)
     }
 
     private fun fakeSession(game: LocalGame, message: String): EmulatorLaunchResult {
