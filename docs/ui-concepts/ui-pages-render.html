@@ -410,14 +410,14 @@
 
     .detail {
       display: grid;
-      grid-template-rows: 430px 1fr;
-      gap: 34px;
-      height: 820px;
+      grid-template-rows: 560px minmax(0, 1fr);
+      gap: 40px;
+      height: 100%;
     }
 
     .detail-top {
       display: grid;
-      grid-template-columns: 400px 1fr;
+      grid-template-columns: 560px 1fr;
       gap: 42px;
       align-items: start;
     }
@@ -425,8 +425,8 @@
     .detail-cover {
       position: relative;
       min-width: 0;
-      width: 400px;
-      height: 400px;
+      width: 560px;
+      height: 560px;
       border-radius: 18px;
       overflow: hidden;
       border: 3px solid var(--cyan);
@@ -443,8 +443,8 @@
 
     .detail-info {
       display: grid;
-      grid-template-rows: auto auto;
-      gap: 30px;
+      grid-template-rows: auto auto auto auto;
+      gap: 22px;
       min-width: 0;
     }
 
@@ -456,19 +456,10 @@
     }
 
     .detail-head h2 {
-      margin: 0 0 14px;
-      font-size: 64px;
+      margin: 0;
+      font-size: 78px;
       line-height: 1.05;
       font-weight: 900;
-    }
-
-    .detail-head p {
-      margin: 0;
-      max-width: 760px;
-      color: rgba(242, 251, 252, 0.72);
-      font-size: 24px;
-      line-height: 1.55;
-      font-weight: 600;
     }
 
     .favorite-button {
@@ -491,25 +482,149 @@
       stroke: currentColor;
     }
 
+    .version-row {
+      width: 100%;
+      display: grid;
+      grid-template-columns: max-content;
+      align-items: center;
+    }
+
+    .select-shell {
+      position: relative;
+      width: min(var(--version-select-width, 320px), 100%);
+      min-width: 0;
+      max-width: 100%;
+      border-radius: 14px;
+      border: 2px solid rgba(218, 241, 244, 0.24);
+      background: rgba(255, 255, 255, 0.035);
+      transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+    }
+
+    .select-shell::after {
+      content: "";
+      position: absolute;
+      right: 22px;
+      top: 50%;
+      width: 12px;
+      height: 12px;
+      border-right: 3px solid var(--cyan);
+      border-bottom: 3px solid var(--cyan);
+      transform: translateY(-64%) rotate(45deg);
+      pointer-events: none;
+      opacity: 0.86;
+      transition: transform 160ms ease, opacity 160ms ease;
+    }
+
+    .select-shell:hover,
+    .select-shell:focus-within {
+      border-color: rgba(53, 241, 221, 0.72);
+      background: rgba(53, 241, 221, 0.08);
+      box-shadow: 0 0 22px rgba(53, 241, 221, 0.16);
+    }
+
+    .select-shell:hover::after,
+    .select-shell:focus-within::after {
+      opacity: 1;
+      transform: translateY(-36%) rotate(225deg);
+    }
+
+    .version-select {
+      width: 100%;
+      height: 72px;
+      padding: 0 58px 0 22px;
+      border-radius: 14px;
+      border: 0;
+      appearance: none;
+      outline: 0;
+      color: var(--text);
+      background: transparent;
+      box-shadow: none;
+      font: inherit;
+      font-size: 23px;
+      font-weight: 800;
+      cursor: pointer;
+      opacity: 0.84;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .version-select:hover,
+    .version-select:focus {
+      opacity: 1;
+    }
+
+    .version-select:focus-visible {
+      outline: 0;
+    }
+
+    .version-select option {
+      color: #061014;
+      background: #f2fbfc;
+      font-weight: 800;
+    }
+
+    .detail-facts {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 18px;
+      padding-block: 34px;
+      border-top: 1px solid rgba(218, 241, 244, 0.12);
+      border-bottom: 1px solid rgba(218, 241, 244, 0.12);
+    }
+
+    .detail-fact {
+      min-width: 0;
+    }
+
+    .detail-fact span {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 27px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .detail-fact strong {
+      display: block;
+      color: var(--text);
+      font-size: 38px;
+      line-height: 1.15;
+      font-weight: 900;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .actions {
       display: grid;
-      grid-template-columns: 260px 220px 220px;
-      gap: 22px;
+      grid-template-columns: 330px 300px 300px;
+      gap: 36px;
     }
 
     .action {
-      height: 78px;
+      height: 128px;
       border-radius: 14px;
-      display: grid;
-      place-items: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
       border: 1px solid rgba(218, 241, 244, 0.2);
       background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
       color: var(--text);
-      font-size: 25px;
+      font-size: 46px;
       font-weight: 900;
       appearance: none;
       font-family: inherit;
       cursor: pointer;
+    }
+
+    .action svg {
+      width: 54px;
+      height: 54px;
+      stroke: currentColor;
+      stroke-width: 2.8;
+      fill: none;
     }
 
     .action.focused {
@@ -521,17 +636,19 @@
 
     .detail-panels {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 28px;
-      align-content: start;
+      grid-template-columns: minmax(0, 1fr) 560px;
+      gap: 34px;
+      min-height: 0;
+      align-content: stretch;
     }
 
     .info-panel {
-      min-height: 300px;
-      border-radius: 16px;
+      min-height: 0;
+      height: 100%;
+      border-radius: 18px;
       border: 1px solid rgba(218, 241, 244, 0.22);
       background: linear-gradient(180deg, rgba(15, 30, 36, 0.92), rgba(8, 17, 21, 0.92));
-      padding: 28px;
+      padding: 42px;
       box-shadow: 0 20px 42px rgba(0, 0, 0, 0.25);
     }
 
@@ -539,6 +656,14 @@
       margin: 0 0 22px;
       font-size: 27px;
       line-height: 1;
+      font-weight: 900;
+    }
+
+    .intro-copy {
+      margin: 0;
+      color: rgba(242, 251, 252, 0.72);
+      font-size: 40px;
+      line-height: 1.45;
       font-weight: 900;
     }
 
@@ -578,6 +703,18 @@
 
     .slot:first-of-type {
       border-top: 0;
+    }
+
+    .screenshot-card {
+      width: 100%;
+      height: 100%;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(218, 241, 244, 0.18);
+      background:
+        radial-gradient(circle at 70% 28%, rgba(255, 255, 255, 0.24), transparent 16%),
+        linear-gradient(135deg, var(--c1), var(--c2));
+      box-shadow: 0 16px 30px rgba(0, 0, 0, 0.26);
     }
 
     .settings-section {
@@ -752,6 +889,12 @@
       ["机械迷宫", "#293746", "#8ae6ff", true]
     ];
 
+    const gameVersions = [
+      ["日版 原始卡带", "红白机", "40 KB", "动作"],
+      ["美版 修订版", "红白机", "41 KB", "动作"],
+      ["中文版 修正版", "红白机", "44 KB", "动作"]
+    ];
+
     let route = new URLSearchParams(location.search).get("page") || "library";
     if (route === "search") route = "library";
     let query = "";
@@ -890,38 +1033,55 @@
               <div class="detail-head">
                 <div>
                   <h2>${game[0]}</h2>
-                  <p>探索经典 FC / NES 世界，支持手柄、触摸和横屏大屏浏览。游戏资源来自在线游戏库索引，可下载后本地缓存运行。</p>
                 </div>
                 <button class="favorite-button">${icon("star")}</button>
               </div>
+              <div class="version-row">
+                <div class="select-shell">
+                  <select class="version-select" id="versionSelect">
+                    ${gameVersions.map((item, itemIndex) => `<option ${itemIndex === 0 ? "selected" : ""}>${item[0]}</option>`).join("")}
+                  </select>
+                </div>
+              </div>
+              <div class="detail-facts">
+                <div class="detail-fact"><span>游戏格式</span><strong>${gameVersions[0][1]}</strong></div>
+                <div class="detail-fact"><span>最近游玩</span><strong>今天</strong></div>
+                <div class="detail-fact"><span>游戏时长</span><strong>1 小时 24 分</strong></div>
+                <div class="detail-fact"><span>文件大小</span><strong>${gameVersions[0][2]}</strong></div>
+              </div>
               <div class="actions">
                 <button class="action focused">开始游戏</button>
-                <button class="action">读取存档</button>
-                <button class="action" id="backToLibrary">返回</button>
+                <button class="action">新存档</button>
+                <button class="action">${game[3] ? "已收藏" : "收藏"}</button>
               </div>
             </section>
           </div>
           <div class="detail-panels">
             <div class="info-panel">
-              <h3>游戏信息</h3>
-              <div class="meta-list">
-                <div class="meta"><span>平台</span><strong>FC / NES</strong></div>
-                <div class="meta"><span>最近</span><strong>今天</strong></div>
-                <div class="meta"><span>游玩时长</span><strong>1 小时 24 分</strong></div>
-                <div class="meta"><span>收藏</span><strong>${game[3] ? "已星标" : "未收藏"}</strong></div>
-              </div>
+              <p class="intro-copy">探索经典红白机世界，支持手柄、触摸和横屏大屏浏览。游戏资源来自在线游戏库索引，可下载后本地缓存运行。</p>
             </div>
-            <div class="info-panel">
-              <h3>存档</h3>
-              <div class="slot"><span>自动存档</span><strong>可读取</strong></div>
-              <div class="slot"><span>手动槽 1</span><strong>可读取</strong></div>
-              <div class="slot"><span>手动槽 2</span><strong>空</strong></div>
-              <div class="slot"><span>手动槽 3</span><strong>空</strong></div>
-            </div>
+            <div class="screenshot-card" style="--c1:${game[1]};--c2:${game[2]}"></div>
           </div>
         </div>
       `;
-      document.getElementById("backToLibrary").addEventListener("click", () => go("library"));
+      const versionSelect = document.getElementById("versionSelect");
+      const versionShell = versionSelect.closest(".select-shell");
+      const syncVersionSelectWidth = () => {
+        const selectedText = versionSelect.options[versionSelect.selectedIndex]?.textContent || "";
+        const canvas = syncVersionSelectWidth.canvas || (syncVersionSelectWidth.canvas = document.createElement("canvas"));
+        const context = canvas.getContext("2d");
+        context.font = "800 23px Microsoft YaHei UI, Microsoft YaHei, Noto Sans CJK SC, Arial, sans-serif";
+        const textWidth = Math.ceil(context.measureText(selectedText).width);
+        versionShell.style.setProperty("--version-select-width", `${textWidth + 100}px`);
+      };
+      syncVersionSelectWidth();
+      versionSelect.addEventListener("change", () => {
+        const selected = gameVersions[versionSelect.selectedIndex] || gameVersions[0];
+        const facts = main.querySelectorAll(".detail-fact strong");
+        facts[0].textContent = selected[1];
+        facts[3].textContent = selected[2];
+        syncVersionSelectWidth();
+      });
     }
 
     function render() {
