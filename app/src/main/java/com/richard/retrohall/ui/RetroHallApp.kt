@@ -345,6 +345,7 @@ private fun RetroHallAppContent(
                     coreDownloadManager = coreDownloadManager,
                     coreSelectionStore = coreSelectionStore,
                     resourceSourceStore = resourceSourceStore,
+                    resourceCatalogClient = resourceCatalogClient,
                     onCacheCleared = { coverReloadTick++ },
                     onUpdateSettings = { next ->
                         scope.launch { userSettingsStore.update(next) }

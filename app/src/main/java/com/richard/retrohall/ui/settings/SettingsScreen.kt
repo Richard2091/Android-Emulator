@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.richard.retrohall.data.core.CoreCatalogClient
 import com.richard.retrohall.data.core.CoreDownloadManager
 import com.richard.retrohall.data.core.CoreSelectionStore
+import com.richard.retrohall.data.game.ResourceCatalogClient
 import com.richard.retrohall.data.settings.ResourceSourceStore
 import com.richard.retrohall.data.settings.ResourceSources
 import com.richard.retrohall.domain.settings.AspectRatio
@@ -74,6 +75,7 @@ internal fun SettingsScreen(
     coreDownloadManager: CoreDownloadManager,
     coreSelectionStore: CoreSelectionStore,
     resourceSourceStore: ResourceSourceStore,
+    resourceCatalogClient: ResourceCatalogClient,
     onCacheCleared: () -> Unit,
     onUpdateSettings: (UserSettings) -> Unit,
     onSelectLibrary: () -> Unit,
@@ -127,6 +129,7 @@ internal fun SettingsScreen(
             coreCatalogClient = coreCatalogClient,
             coreDownloadManager = coreDownloadManager,
             coreSelectionStore = coreSelectionStore,
+            resourceCatalogClient = resourceCatalogClient,
             onDismiss = { showCoreManager = false },
         )
     }
@@ -250,7 +253,8 @@ private fun SettingsCoreSection(
 ) {
     val selections by coreSelectionStore.selections.collectAsState(initial = emptyMap())
     val currentCore = remember(selections) {
-        selections["nes"]?.takeIf { it.isNotBlank() } ?: "默认"
+        val core = selections["nes"]?.takeIf { it.isNotBlank() } ?: "默认"
+        core
     }
     SettingsSection(title = "核心", modifier = modifier, dense = dense) {
         SettingRow("核心管理", first = true, dense = dense) {
@@ -259,10 +263,12 @@ private fun SettingsCoreSection(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    "当前：$currentCore",
+                    "FC / NES：$currentCore",
                     color = UiText,
                     fontSize = if (dense) 14.sp else 15.sp,
                     fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 Box(
                     modifier = Modifier
