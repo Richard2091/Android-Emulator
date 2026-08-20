@@ -97,9 +97,12 @@ internal fun CoreManagerDialog(
     val platformCores = coreCatalog?.forPlatform(activePlatformId).orEmpty()
     val selectedCoreId = selections[activePlatformId]
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(0.96f).fillMaxHeight(0.70f),
+            modifier = Modifier.fillMaxWidth(0.98f).fillMaxHeight(0.72f),
             shape = RoundedCornerShape(20.dp),
             color = UiPanel,
             border = androidx.compose.foundation.BorderStroke(1.dp, UiLine),
@@ -111,7 +114,16 @@ internal fun CoreManagerDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("核心管理", color = UiText, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("核心管理", color = UiText, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                        Spacer(Modifier.size(8.dp))
+                        Text(
+                            "· ${activeOption?.displayName ?: ""} ·",
+                            color = UiCyan,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                        )
+                    }
                     Box(
                         modifier = Modifier
                             .size(30.dp)
@@ -126,7 +138,7 @@ internal fun CoreManagerDialog(
                 }
                 Spacer(Modifier.height(8.dp))
 
-                if (platformOptions.isNotEmpty()) {
+                if (platformOptions.size > 1) {
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),

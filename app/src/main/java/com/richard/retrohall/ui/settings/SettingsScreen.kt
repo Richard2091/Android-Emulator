@@ -295,28 +295,33 @@ private fun CoreSourceRow(
     dense: Boolean,
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onManage)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            currentCore,
-            color = UiText,
-            fontSize = if (dense) 13.sp else 14.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-        )
-        Text(
-            "管理 ›",
-            color = UiCyan,
-            fontSize = if (dense) 12.sp else 13.sp,
-            fontWeight = FontWeight.ExtraBold,
-        )
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .clickable(onClick = onManage)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                currentCore,
+                color = UiText,
+                fontSize = if (dense) 13.sp else 14.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.size(4.dp))
+            Text(
+                ">",
+                color = UiCyan,
+                fontSize = if (dense) 13.sp else 14.sp,
+                fontWeight = FontWeight.ExtraBold,
+            )
+        }
     }
 }
 
