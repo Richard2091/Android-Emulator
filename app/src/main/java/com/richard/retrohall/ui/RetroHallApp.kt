@@ -29,6 +29,7 @@ import com.richard.retrohall.data.game.GameRepository
 import com.richard.retrohall.data.game.ResourceCatalogClient
 import com.richard.retrohall.data.game.RomDownloadManager
 import com.richard.retrohall.data.settings.UserSettingsStore
+import com.richard.retrohall.data.settings.ResourceSourceStore
 import com.richard.retrohall.domain.game.CoverImageLoader
 import com.richard.retrohall.domain.game.GameDetail
 import com.richard.retrohall.domain.game.LocalGame
@@ -83,6 +84,7 @@ fun RetroHallApp() {
         coreCatalogClient = dependencies.coreCatalogClient,
         coreDownloadManager = dependencies.coreDownloadManager,
         coreSelectionStore = dependencies.coreSelectionStore,
+        resourceSourceStore = dependencies.resourceSourceStore,
     )
 }
 
@@ -101,6 +103,7 @@ private fun RetroHallAppContent(
     coreCatalogClient: CoreCatalogClient,
     coreDownloadManager: CoreDownloadManager,
     coreSelectionStore: CoreSelectionStore,
+    resourceSourceStore: ResourceSourceStore,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -341,6 +344,7 @@ private fun RetroHallAppContent(
                     coreCatalogClient = coreCatalogClient,
                     coreDownloadManager = coreDownloadManager,
                     coreSelectionStore = coreSelectionStore,
+                    resourceSourceStore = resourceSourceStore,
                     onCacheCleared = { coverReloadTick++ },
                     onUpdateSettings = { next ->
                         scope.launch { userSettingsStore.update(next) }

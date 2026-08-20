@@ -21,6 +21,7 @@ import com.richard.retrohall.data.core.CoreDownloadManager
 import com.richard.retrohall.data.core.CoreSelectionStore
 import com.richard.retrohall.data.save.SaveStateRepository
 import com.richard.retrohall.data.settings.UserSettingsStore
+import com.richard.retrohall.data.settings.ResourceSourceStore
 import com.richard.retrohall.domain.game.CoverImageLoader
 import com.richard.retrohall.domain.save.SaveStateStore
 import com.richard.retrohall.domain.settings.CacheMaintenance
@@ -47,13 +48,14 @@ class RetroHallDependencies private constructor(context: Context) {
         HasheousGameMetadataClient(appContext),
         ZhMetadataClient(),
     )
+    val resourceSourceStore: ResourceSourceStore = ResourceSourceStore(appContext)
     val resourceCatalogClient: ResourceCatalogClient =
-        ResourceCatalogClient(ResourceRepositoryConfig.GAME_CATALOG_BASE_URL)
+        ResourceCatalogClient(resourceSourceStore)
     val romDownloadManager: RomDownloadManager = RomDownloadManager(appContext)
     val contentDownloadManager: ContentDownloadManager = ContentDownloadManager(appContext)
     val coverDownloader: CoverDownloader = CoverDownloader(appContext)
     val saveStateRepository: SaveStateRepository = SaveStateRepository(appContext, database.saveStateDao())
-    val coreCatalogClient: CoreCatalogClient = CoreCatalogClient(ResourceRepositoryConfig.CORE_CATALOG_BASE_URL)
+    val coreCatalogClient: CoreCatalogClient = CoreCatalogClient(resourceSourceStore)
     val coreSelectionStore: CoreSelectionStore = CoreSelectionStore(appContext)
     val coreDownloadManager: CoreDownloadManager = CoreDownloadManager(appContext)
     val emulatorSessionFactory: EmulatorSessionFactory = EmulatorSessionFactory(appContext, coreCatalogClient, coreSelectionStore)

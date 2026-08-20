@@ -3,6 +3,7 @@ package com.richard.retrohall.emulator
 import androidx.test.core.app.ApplicationProvider
 import com.richard.retrohall.data.core.CoreCatalogClient
 import com.richard.retrohall.data.core.CoreSelectionStore
+import com.richard.retrohall.data.settings.ResourceSourceStore
 import com.richard.retrohall.domain.game.LocalGame
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -29,7 +30,7 @@ class EmulatorSessionFactoryTest {
 
         val factory = EmulatorSessionFactory(
             context,
-            CoreCatalogClient("https://richard2091.github.io/RetroGame-Cores/"),
+            CoreCatalogClient(ResourceSourceStore(context)),
             CoreSelectionStore(context),
         )
         val result = factory.createStartedSession(game)

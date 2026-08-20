@@ -1,6 +1,8 @@
 package com.richard.retrohall.data.core
 
 import com.richard.retrohall.data.game.HttpTextFetcher
+import com.richard.retrohall.data.game.ResourceRepositoryConfig
+import com.richard.retrohall.data.settings.ResourceSourceStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -44,18 +46,20 @@ data class CoreCatalog(
 
 /**
  * 读取核心仓库清单（catalog/core-manifest.v1.json）。
+ * 数据源根地址从 [ResourceSourceStore] 读取，留空时使用内置默认。
  */
 class CoreCatalogClient(
-    private val baseUrl: String,
+    private val sourceStore: ResourceSourceStore,
     private val fetcher: HttpTextFetcher = HttpTextFetcher(),
 ) {
     suspend fun fetchCatalog(): CoreCatalog = withContext(Dispatchers.IO) {
-        val url = baseUrl.trimEnd('/') + "/catalog/core-manifest.v1.json"
+        val baseUrl = ResourceRepositoryConfig.coreBaseUrl(sourceStore.coreSourceUrl())
+        val url = baseUrl + "catalog/core-manifest.v1.json"
         val json = JSONObject(fetcher.fetch(url))
-        parse(json)
+        parse(json, baseUrl)
     }
 
-    private fun parse(json: JSONObject): CoreCatalog {
+    private fun parse(json: JSONObject, baseUrl: String): CoreCatalog {
         val coresArray = json.optJSONArray("cores") ?: org.json.JSONArray()
         val cores = buildList {
             for (i in 0 until coresArray.length()) {

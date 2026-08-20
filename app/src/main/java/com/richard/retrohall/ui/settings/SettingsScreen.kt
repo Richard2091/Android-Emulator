@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.sp
 import com.richard.retrohall.data.core.CoreCatalogClient
 import com.richard.retrohall.data.core.CoreDownloadManager
 import com.richard.retrohall.data.core.CoreSelectionStore
+import com.richard.retrohall.data.settings.ResourceSourceStore
+import com.richard.retrohall.data.settings.ResourceSources
 import com.richard.retrohall.domain.settings.AspectRatio
 import com.richard.retrohall.domain.settings.CacheMaintenance
 import com.richard.retrohall.domain.settings.ControlMode
@@ -50,14 +52,18 @@ import com.richard.retrohall.domain.settings.VirtualPadVisibility
 import com.richard.retrohall.ui.UiCyan
 import com.richard.retrohall.ui.UiLine
 import com.richard.retrohall.ui.UiMuted
+import com.richard.retrohall.ui.UiPanel
 import com.richard.retrohall.ui.UiText
 import com.richard.retrohall.ui.aspectRatioLabel
 import com.richard.retrohall.ui.components.AppShell
+import com.richard.retrohall.ui.components.HallActionButton
 import com.richard.retrohall.ui.components.HallConfirmDialog
 import com.richard.retrohall.ui.components.HallSlider
 import com.richard.retrohall.ui.components.HallToggle
 import com.richard.retrohall.ui.components.SegmentedChoice
 import com.richard.retrohall.ui.controlModeLabel
+import androidx.compose.ui.window.Dialog
+import androidx.compose.material3.Surface
 import kotlinx.coroutines.launch
 
 @Composable
@@ -67,6 +73,7 @@ internal fun SettingsScreen(
     coreCatalogClient: CoreCatalogClient,
     coreDownloadManager: CoreDownloadManager,
     coreSelectionStore: CoreSelectionStore,
+    resourceSourceStore: ResourceSourceStore,
     onCacheCleared: () -> Unit,
     onUpdateSettings: (UserSettings) -> Unit,
     onSelectLibrary: () -> Unit,
@@ -75,6 +82,9 @@ internal fun SettingsScreen(
     onOpenSettings: () -> Unit,
 ) {
     var showCoreManager by remember { mutableStateOf(false) }
+    var editingSource by remember { mutableStateOf<SourceField?>(null) }
+    val sources by resourceSourceStore.sources.collectAsState(initial = ResourceSources())
+    val scope = rememberCoroutineScope()
 
     AppShell(
         selectedNav = "设置",
@@ -92,6 +102,14 @@ internal fun SettingsScreen(
             item { SettingsAudioSection(settings, onUpdateSettings, Modifier.fillMaxWidth(), dense = false) }
             item { SettingsControlSection(settings, onUpdateSettings, Modifier.fillMaxWidth(), dense = false) }
             item { SettingsGameSection(settings, onUpdateSettings, Modifier.fillMaxWidth(), dense = false) }
+            item {
+                SettingsSourceSection(
+                    sources = sources,
+                    onEditSource = { editingSource = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    dense = false,
+                )
+            }
             item {
                 SettingsCoreSection(
                     coreSelectionStore = coreSelectionStore,
@@ -111,6 +129,115 @@ internal fun SettingsScreen(
             coreSelectionStore = coreSelectionStore,
             onDismiss = { showCoreManager = false },
         )
+    }
+
+    editingSource?.let { field ->
+        SourceUrlDialog(
+            title = if (field == SourceField.Game) "游戏源" else "核心源",
+            initialValue = if (field == SourceField.Game) sources.gameSourceUrl else sources.coreSourceUrl,
+            onConfirm = { value ->
+                val next = when (field) {
+                    SourceField.Game -> sources.copy(gameSourceUrl = value)
+                    SourceField.Core -> sources.copy(coreSourceUrl = value)
+                }
+                scope.launch { resourceSourceStore.update(next) }
+                editingSource = null
+            },
+            onDismiss = { editingSource = null },
+        )
+    }
+}
+
+private enum class SourceField { Game, Core }
+
+@Composable
+private fun SettingsSourceSection(
+    sources: ResourceSources,
+    onEditSource: (SourceField) -> Unit,
+    modifier: Modifier = Modifier,
+    dense: Boolean = false,
+) {
+    SettingsSection(title = "数据源", modifier = modifier, dense = dense) {
+        SettingRow("游戏源", first = true, dense = dense) {
+            SourceValueRow(value = sources.gameSourceUrl, onClick = { onEditSource(SourceField.Game) }, dense = dense)
+        }
+        SettingRow("核心源", dense = dense) {
+            SourceValueRow(value = sources.coreSourceUrl, onClick = { onEditSource(SourceField.Core) }, dense = dense)
+        }
+    }
+}
+
+@Composable
+private fun SourceValueRow(value: String, onClick: () -> Unit, dense: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            value.ifBlank { "未设置" },
+            color = if (value.isBlank()) UiMuted else UiText,
+            fontSize = if (dense) 13.sp else 14.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.White.copy(alpha = 0.10f))
+                .border(1.dp, UiCyan, RoundedCornerShape(10.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Text("修改", color = UiCyan, fontSize = if (dense) 13.sp else 14.sp, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+private fun SourceUrlDialog(
+    title: String,
+    initialValue: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var value by remember(initialValue) { mutableStateOf(initialValue) }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(0.94f),
+            shape = RoundedCornerShape(22.dp),
+            color = UiPanel,
+            border = androidx.compose.foundation.BorderStroke(1.dp, UiLine),
+            shadowElevation = 24.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(title, color = UiText, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                Text(
+                    "请输入资源仓库根地址，留空则使用内置默认地址。",
+                    color = UiMuted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = {
+                        Text(if (title == "游戏源") "https://example.com/RetroGame/" else "https://example.com/RetroGame-Cores/", color = UiMuted)
+                    },
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(color = UiText, fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    HallActionButton("保存", focused = true, fillWidth = true, onClick = { onConfirm(value) })
+                }
+                HallActionButton("取消", focused = false, fillWidth = true, onClick = onDismiss)
+            }
+        }
     }
 }
 

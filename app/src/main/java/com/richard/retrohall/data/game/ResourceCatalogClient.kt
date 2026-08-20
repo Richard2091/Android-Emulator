@@ -1,5 +1,6 @@
 package com.richard.retrohall.data.game
 
+import com.richard.retrohall.data.settings.ResourceSourceStore
 import com.richard.retrohall.domain.game.CategoryCatalog
 import com.richard.retrohall.domain.game.CategoryDescriptor
 import com.richard.retrohall.domain.game.GameDetail
@@ -16,15 +17,17 @@ import java.net.URI
  * 读取资源仓库 v2 目录（catalog/index.v2.json、manifest.list.v2.json、game.json）。
  *
  * 相对路径按《资源仓库规范》解析：相对当前 JSON 文件所在目录。
+ * 数据源根地址从 [ResourceSourceStore] 读取，留空时使用内置默认。
  */
 class ResourceCatalogClient(
-    private val baseUrl: String,
+    private val sourceStore: ResourceSourceStore,
     private val fetcher: HttpTextFetcher = HttpTextFetcher(),
 ) {
-    private var lastDirUrl: String = baseUrl.trimEnd('/') + "/"
+    private var lastDirUrl: String = ResourceRepositoryConfig.GAME_CATALOG_BASE_URL
 
     suspend fun fetchIndex(): CategoryCatalog = withContext(Dispatchers.IO) {
-        val url = baseUrl.trimEnd('/') + "/catalog/index.v2.json"
+        val baseUrl = ResourceRepositoryConfig.gameBaseUrl(sourceStore.gameSourceUrl())
+        val url = baseUrl + "catalog/index.v2.json"
         val json = JSONObject(fetcher.fetch(url))
         lastDirUrl = url.substringBeforeLast('/') + "/"
         parseIndex(json)
