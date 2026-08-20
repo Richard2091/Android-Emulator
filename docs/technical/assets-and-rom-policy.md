@@ -4,6 +4,8 @@
 
 保护项目边界，避免把商业 ROM、私有 ROM、测试 ROM 或不适合公开分发的资源提交到 git。
 
+外部游戏目录仓库和核心资源仓库的结构、清单格式、分类拆分、详情文件夹和第三方维护要求，见 `docs/technical/resource-repository-spec.md`。
+
 ## 可以提交到 git 的内容
 
 - Kotlin / C++ / Gradle 源码

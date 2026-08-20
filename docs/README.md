@@ -26,6 +26,7 @@
 5. `docs/agent/02-implementation-roadmap.md`
 6. `docs/agent/03-task-breakdown.md`
 7. `docs/agent/04-acceptance-checklist.md`
+8. `docs/agent/05-resource-repository-refactor.md`（资源仓库重构验收跟踪）
 
 ## 专项文档索引
 
@@ -53,6 +54,7 @@ ROM 和资源边界：
 
 - `docs/technical/assets-and-rom-policy.md`
 - `docs/technical/private-resource-injection.md`
+- `docs/technical/resource-repository-spec.md`
 
 大厅 UI：
 
