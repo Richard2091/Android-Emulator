@@ -243,7 +243,7 @@ class GameRepository(
     /**
      * 拉取并缓存游戏详情，返回 [GameDetail]。
      *
-     * 详情页按需调用；离线时抛出异常由调用方使用最近一次缓存。
+     * 详情页按需调用；离线时回退最近一次磁盘缓存，无缓存才抛异常。
      */
     suspend fun fetchGameDetail(
         client: ResourceCatalogClient,
@@ -253,8 +253,25 @@ class GameRepository(
         return if (cachedDetail != null && cachedDetail.id == game.id) {
             cachedDetail
         } else {
-            client.fetchDetail(game.detailUrl)
+            client.fetchDetailCached(game.id, game.detailUrl)
         }
+    }
+
+    /**
+     * 用全局搜索索引匹配查询（支持中/英/日文标题与 slug）。
+     *
+     * 返回命中的游戏 id 集合；索引加载失败时返回 null，由调用方回退本地字段过滤。
+     */
+    suspend fun searchByIndex(client: ResourceCatalogClient, query: String): Set<String>? = withContext(Dispatchers.IO) {
+        val q = query.trim()
+        if (q.isEmpty()) return@withContext null
+        val index = runCatching { client.fetchSearchIndex() }.getOrNull() ?: return@withContext null
+        index.entries
+            .filter { entry ->
+                entry.title.values.any { it.contains(q, ignoreCase = true) } ||
+                    entry.slug.contains(q, ignoreCase = true)
+            }
+            .mapTo(mutableSetOf()) { it.id }
     }
 }
 
