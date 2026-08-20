@@ -73,6 +73,7 @@ internal fun CoreManagerDialog(
     coreDownloadManager: CoreDownloadManager,
     coreSelectionStore: CoreSelectionStore,
     resourceCatalogClient: ResourceCatalogClient,
+    initialCategoryId: String? = null,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -86,7 +87,8 @@ internal fun CoreManagerDialog(
     LaunchedEffect(coreCatalogClient, resourceCatalogClient) {
         coreCatalog = runCatching { coreCatalogClient.fetchCatalog() }.getOrNull()
         gameIndex = runCatching { resourceCatalogClient.fetchIndex() }.getOrNull()
-        selectedCategoryId = buildPlatformOptions(gameIndex, coreCatalog).firstOrNull()?.categoryId
+        selectedCategoryId = initialCategoryId
+            ?: buildPlatformOptions(gameIndex, coreCatalog).firstOrNull()?.categoryId
     }
 
     val platformOptions = remember(gameIndex, coreCatalog) { buildPlatformOptions(gameIndex, coreCatalog) }

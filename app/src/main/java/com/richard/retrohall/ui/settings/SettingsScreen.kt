@@ -45,6 +45,7 @@ import com.richard.retrohall.data.core.CoreSelectionStore
 import com.richard.retrohall.data.game.ResourceCatalogClient
 import com.richard.retrohall.data.settings.ResourceSourceStore
 import com.richard.retrohall.data.settings.ResourceSources
+import com.richard.retrohall.domain.game.CategoryDescriptor
 import com.richard.retrohall.domain.settings.AspectRatio
 import com.richard.retrohall.domain.settings.CacheMaintenance
 import com.richard.retrohall.domain.settings.ControlMode
@@ -83,10 +84,18 @@ internal fun SettingsScreen(
     onSelectFavorites: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    var showCoreManager by remember { mutableStateOf(false) }
+    var managingCategory by remember { mutableStateOf<CategoryDescriptor?>(null) }
     var editingSource by remember { mutableStateOf<SourceField?>(null) }
     val sources by resourceSourceStore.sources.collectAsState(initial = ResourceSources())
+    val selections by coreSelectionStore.selections.collectAsState(initial = emptyMap())
+    var gameCategories by remember { mutableStateOf<List<CategoryDescriptor>>(emptyList()) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(resourceCatalogClient) {
+        gameCategories = runCatching {
+            resourceCatalogClient.fetchIndex().categories.filter { it.id != "all" }
+        }.getOrDefault(emptyList())
+    }
 
     AppShell(
         selectedNav = "设置",
@@ -114,8 +123,9 @@ internal fun SettingsScreen(
             }
             item {
                 SettingsCoreSection(
-                    coreSelectionStore = coreSelectionStore,
-                    onOpenCoreManager = { showCoreManager = true },
+                    categories = gameCategories,
+                    selections = selections,
+                    onManage = { category -> managingCategory = category },
                     modifier = Modifier.fillMaxWidth(),
                     dense = false,
                 )
@@ -124,13 +134,14 @@ internal fun SettingsScreen(
         }
     }
 
-    if (showCoreManager) {
+    managingCategory?.let { category ->
         CoreManagerDialog(
             coreCatalogClient = coreCatalogClient,
             coreDownloadManager = coreDownloadManager,
             coreSelectionStore = coreSelectionStore,
             resourceCatalogClient = resourceCatalogClient,
-            onDismiss = { showCoreManager = false },
+            initialCategoryId = category.id,
+            onDismiss = { managingCategory = null },
         )
     }
 
@@ -246,42 +257,66 @@ private fun SourceUrlDialog(
 
 @Composable
 private fun SettingsCoreSection(
-    coreSelectionStore: CoreSelectionStore,
-    onOpenCoreManager: () -> Unit,
+    categories: List<CategoryDescriptor>,
+    selections: Map<String, String>,
+    onManage: (CategoryDescriptor) -> Unit,
     modifier: Modifier = Modifier,
     dense: Boolean = false,
 ) {
-    val selections by coreSelectionStore.selections.collectAsState(initial = emptyMap())
-    val currentCore = remember(selections) {
-        val core = selections["nes"]?.takeIf { it.isNotBlank() } ?: "默认"
-        core
-    }
     SettingsSection(title = "核心", modifier = modifier, dense = dense) {
-        SettingRow("核心管理", first = true, dense = dense) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(
-                    "FC / NES：$currentCore",
-                    color = UiText,
-                    fontSize = if (dense) 14.sp else 15.sp,
-                    fontWeight = FontWeight.Black,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        if (categories.isEmpty()) {
+            SettingRow("核心管理", first = true, dense = dense) {
+                CoreSourceRow(
+                    currentCore = "默认",
+                    onManage = { },
+                    dense = dense,
                 )
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White.copy(alpha = 0.10f))
-                        .border(1.dp, UiCyan, RoundedCornerShape(10.dp))
-                        .clickable(onClick = onOpenCoreManager)
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                ) {
-                    Text("管理", color = UiCyan, fontSize = if (dense) 13.sp else 14.sp, fontWeight = FontWeight.ExtraBold)
+            }
+        } else {
+            categories.forEachIndexed { index, category ->
+                val platformId = category.platformIds.firstOrNull() ?: category.id
+                val currentCore = selections[platformId]?.takeIf { it.isNotBlank() } ?: "默认"
+                SettingRow(category.displayName, first = index == 0, dense = dense) {
+                    CoreSourceRow(
+                        currentCore = currentCore,
+                        onManage = { onManage(category) },
+                        dense = dense,
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CoreSourceRow(
+    currentCore: String,
+    onManage: () -> Unit,
+    dense: Boolean,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onManage)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            currentCore,
+            color = UiText,
+            fontSize = if (dense) 13.sp else 14.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        Text(
+            "管理 ›",
+            color = UiCyan,
+            fontSize = if (dense) 12.sp else 13.sp,
+            fontWeight = FontWeight.ExtraBold,
+        )
     }
 }
 
