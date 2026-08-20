@@ -50,6 +50,9 @@ class GameRepository(
         return FakeGameCatalog.games.size
     }
 
+    /** 本地游戏库是否为空。 */
+    suspend fun isEmpty(): Boolean = localGameDao.count() == 0
+
     /**
      * 从资源仓库 v2 目录同步游戏索引（优先走 v2，失败返回 0 由调用方回退 v1）。
      *
@@ -82,6 +85,9 @@ class GameRepository(
                 }
             }
             localGameDao.upsertAll(remoteGames.map { it.toEntity() })
+            if (remoteGames.isNotEmpty()) {
+                localGameDao.deleteLegacyGithubSource()
+            }
             remoteGames.size
         } catch (error: Exception) {
             0

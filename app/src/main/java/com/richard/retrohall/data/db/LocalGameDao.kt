@@ -67,6 +67,12 @@ interface LocalGameDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(games: List<LocalGameEntity>)
 
+    @Query("DELETE FROM local_games WHERE categoryId = ''")
+    suspend fun deleteLegacyWithoutCategory()
+
+    @Query("DELETE FROM local_games WHERE id LIKE 'github-%'")
+    suspend fun deleteLegacyGithubSource()
+
     @Query("DELETE FROM local_games WHERE id = :gameId")
     suspend fun deleteById(gameId: String)
 }
