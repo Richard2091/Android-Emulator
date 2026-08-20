@@ -21,7 +21,9 @@ class ContentDownloadManager(context: Context) {
 
     fun isDownloaded(gameId: String): Boolean {
         val dir = File(contentRoot, gameId)
-        return dir.listFiles()?.any { it.isFile && it.length() > 0L } == true
+        return dir.listFiles()
+            ?.flatMap { it.listFiles()?.toList() ?: emptyList() }
+            ?.any { it.isFile && it.length() > 0L } == true
     }
 
     fun isFileDownloaded(gameId: String, fileInfo: GameFileInfo): Boolean {
