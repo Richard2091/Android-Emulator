@@ -9,10 +9,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -42,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.window.Dialog
 import com.richard.retrohall.data.core.CoreCatalog
 import com.richard.retrohall.data.core.CoreCatalogClient
@@ -95,14 +95,36 @@ internal fun CoreManagerDialog(
     val activeOption = platformOptions.firstOrNull { it.categoryId == selectedCategoryId }
     val activePlatformId = activeOption?.platformId ?: platformOptions.firstOrNull()?.platformId.orEmpty()
     val platformCores = coreCatalog?.forPlatform(activePlatformId).orEmpty()
+    // 未配置（未选择过）时按「默认核心 -> 第一个」回退展示选中态，与启动时 CorePathResolver 一致。
     val selectedCoreId = selections[activePlatformId]
+        ?: coreCatalog?.defaultFor(activePlatformId)?.id
+        ?: platformCores.firstOrNull()?.id
+    val hasDownloadedCore = platformCores.any { coreDownloadManager.isDownloaded(it) }
 
+    LaunchedEffect(activePlatformId, platformCores) {
+        if (platformCores.isNotEmpty() && !hasDownloadedCore && busyCoreId == null) {
+            val target = coreCatalog?.defaultFor(activePlatformId) ?: platformCores.first()
+            busyCoreId = target.id
+            notice = "正在自动下载默认核心 ${target.displayName}..."
+            try {
+                coreDownloadManager.download(target)
+                coreSelectionStore.select(activePlatformId, target.id)
+                notice = "已自动下载并选择 ${target.displayName}"
+            } catch (e: Exception) {
+                notice = "自动下载失败：${e.message ?: "未知错误"}"
+            } finally {
+                busyCoreId = null
+            }
+        }
+    }
+
+    val maxDialogHeight = (LocalConfiguration.current.screenHeightDp * 0.72f).dp
     Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(0.98f).fillMaxHeight(0.72f),
+            modifier = Modifier.fillMaxWidth(0.5f).heightIn(max = maxDialogHeight),
             shape = RoundedCornerShape(20.dp),
             color = UiPanel,
             border = androidx.compose.foundation.BorderStroke(1.dp, UiLine),
@@ -114,15 +136,27 @@ internal fun CoreManagerDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("核心管理", color = UiText, fontSize = 18.sp, fontWeight = FontWeight.Black)
-                        Spacer(Modifier.size(8.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f),
+                    ) {
                         Text(
-                            "· ${activeOption?.displayName ?: ""} ·",
-                            color = UiCyan,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            "${activeOption?.displayName ?: ""} 核心管理",
+                            color = UiText,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
                         )
+                        notice?.let { message ->
+                            Spacer(Modifier.size(8.dp))
+                            Text(
+                                message,
+                                color = UiMuted,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                     Box(
                         modifier = Modifier
@@ -165,25 +199,20 @@ internal fun CoreManagerDialog(
                     Spacer(Modifier.height(8.dp))
                 }
 
-                notice?.let { message ->
-                    Text(message, color = UiMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(6.dp))
-                }
-
                 when {
                     coreCatalog == null && gameIndex == null -> {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
                             Text("清单加载失败，请检查数据源后重试。", color = UiMuted, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                     platformCores.isEmpty() -> {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
                             Text("该平台暂无可用核心。", color = UiMuted, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                     else -> {
                         LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(platformCores.size) { index ->
@@ -203,7 +232,7 @@ internal fun CoreManagerDialog(
                                         busyCoreId = core.id
                                         scope.launch {
                                             try {
-                                                coreDownloadManager.download(core, coreDownloadManager.supportedAbis.first())
+                                                coreDownloadManager.download(core)
                                                 notice = "${core.displayName} 下载完成"
                                             } catch (e: Exception) {
                                                 notice = "下载失败：${e.message ?: "未知错误"}"
