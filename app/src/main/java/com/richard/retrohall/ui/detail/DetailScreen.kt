@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.richard.retrohall.domain.game.CategoryDescriptor
 import com.richard.retrohall.domain.game.CoverImageLoader
 import com.richard.retrohall.domain.game.LocalGame
 import com.richard.retrohall.domain.save.SaveStateStore
@@ -90,6 +91,7 @@ import java.io.File
 internal fun DetailScreen(
     game: LocalGame,
     message: String?,
+    indexCategories: List<CategoryDescriptor> = emptyList(),
     saveStateStore: SaveStateStore,
     selectedSaveId: String?,
     coverReloadTick: Long,
@@ -164,9 +166,12 @@ internal fun DetailScreen(
                             HorizontalDivider(color = dividerColor)
                             Spacer(Modifier.height(if (dense) 10.dp else 16.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(if (dense) 10.dp else 18.dp)) {
+                                val typeName = indexCategories.firstOrNull { it.id == game.categoryId }?.displayName
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?: game.platform
                                 DetailInfoItem(
-                                    "游戏格式",
-                                    if (game.runtimeFamily.isBlank()) game.platform else game.runtimeFamily,
+                                    "类型",
+                                    typeName,
                                     valueSize = if (dense) 14.sp else 15.sp,
                                     modifier = Modifier.weight(1f),
                                 )

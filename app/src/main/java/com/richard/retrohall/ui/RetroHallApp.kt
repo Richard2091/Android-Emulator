@@ -239,6 +239,7 @@ private fun RetroHallAppContent(
                     DetailScreen(
                         game = displayGame,
                         message = launchMessage,
+                        indexCategories = indexCategories,
                         saveStateStore = saveStateStore,
                         selectedSaveId = selectedSaveIds[latestGame.id],
                         coverReloadTick = coverReloadTick,

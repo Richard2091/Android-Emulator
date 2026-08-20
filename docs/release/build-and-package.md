@@ -72,6 +72,48 @@ Release APK 必须先确认：
 - APK 不包含签名文件。
 - 许可证边界已检查。
 
+### 0.2.0 一键打包与发布
+
+签名密钥与密码一律通过环境变量注入，不落盘到仓库或命令行历史。每次构建前重新设置即可。
+
+```powershell
+$env:JAVA_HOME='D:\data\AI\Tools\jdk-17'
+$env:ANDROID_HOME='D:\data\AI\Tools\AndroidSdk'
+$env:ANDROID_SDK_ROOT='D:\data\AI\Tools\AndroidSdk'
+$env:RETROHALL_RELEASE_STORE_FILE='<私有签名文件路径>'
+$env:RETROHALL_RELEASE_STORE_PASSWORD='<密码>'
+$env:RETROHALL_RELEASE_KEY_ALIAS='<别名>'
+$env:RETROHALL_RELEASE_KEY_PASSWORD='<密码>'
+.\gradlew.bat clean :app:assembleRelease
+```
+
+产物与资产准备：
+
+```powershell
+$releaseDir = 'app\build\outputs\apk\release'
+Copy-Item -Force "$releaseDir\app-release.apk" "$releaseDir\RetroHall-v0.2.0-release.apk"
+$hash = (Get-FileHash "$releaseDir\RetroHall-v0.2.0-release.apk" -Algorithm SHA256).Hash.ToLower()
+"${hash}  RetroHall-v0.2.0-release.apk" | Set-Content -Encoding ASCII "$releaseDir\RetroHall-v0.2.0-release.sha256.txt"
+```
+
+发布前检查：
+
+- `jar tf` 确认 `assets/retrohall_private/cores/**/*.so` 与 `manifest.json` 已打包。
+- `jar tf` 确认不含 `roms/`、`covers/`、签名材料。
+- 生成 `RetroHall-v0.2.0-release.sha256.txt` 并复核哈希。
+
+创建 GitHub Release：
+
+```powershell
+gh release create v0.2.0 `
+  "$releaseDir\RetroHall-v0.2.0-release.apk" `
+  "$releaseDir\RetroHall-v0.2.0-release.sha256.txt" `
+  --title "Retro Hall v0.2.0 APK Release" `
+  --notes-file docs\release\v0.2.0-apk-release.md
+```
+
+发版时更新 `app/build.gradle.kts` 的 `versionCode` / `versionName`，并在 `docs/release/` 下新建对应版本说明。
+
 ## 签名
 
 签名文件不得提交到 git。
