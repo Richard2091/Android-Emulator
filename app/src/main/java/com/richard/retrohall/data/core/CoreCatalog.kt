@@ -56,7 +56,8 @@ class CoreCatalogClient(
         val baseUrl = ResourceRepositoryConfig.coreBaseUrl(sourceStore.coreSourceUrl())
         val url = baseUrl + "catalog/core-manifest.v1.json"
         val json = JSONObject(fetcher.fetch(url))
-        parse(json, baseUrl)
+        val manifestDir = url.substringBeforeLast('/') + "/"
+        parse(json, manifestDir)
     }
 
     private fun parse(json: JSONObject, baseUrl: String): CoreCatalog {

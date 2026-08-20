@@ -33,6 +33,20 @@ class CoreDownloadManager(context: Context) {
             file.isFile && file.length() > 0L && (info.sha256.isBlank() || verifySha256(file, info.sha256))
         }
 
+    /**
+     * 选择「设备支持 ABI ∩ 清单提供 ABI」的第一个，用于下载时自动匹配架构。
+     * 模拟器 x86_64 有 native bridge 但应用自加载 arm so 会 dlopen 失败，因此优先本机真实 ABI。
+     */
+    fun matchingAbi(core: CoreInfo): String? =
+        supportedAbis.firstOrNull { abi -> core.fileFor(abi) != null }
+
+    /** 下载核心到自动匹配的 ABI；找不到匹配时抛错，由调用方提示用户。 */
+    suspend fun download(core: CoreInfo) {
+        val abi = matchingAbi(core)
+            ?: throw IllegalStateException("核心 ${core.displayName} 无本机支持的架构（${supportedAbis.joinToString("、")}）")
+        download(core, abi)
+    }
+
     suspend fun download(core: CoreInfo, abi: String) = withContext(Dispatchers.IO) {
         val info = core.fileFor(abi) ?: throw IllegalStateException("核心 ${core.id} 不支持 ABI $abi")
         val target = localFile(info)
