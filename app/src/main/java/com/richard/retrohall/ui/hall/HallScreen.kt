@@ -82,6 +82,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.zIndex
 import com.richard.retrohall.data.game.RomDownloadManager
 import com.richard.retrohall.data.game.ContentDownloadManager
+import com.richard.retrohall.domain.game.CategoryDescriptor
 import com.richard.retrohall.domain.game.CoverImageLoader
 import com.richard.retrohall.domain.game.LocalGame
 import com.richard.retrohall.ui.HallIcon
@@ -116,6 +117,16 @@ internal data class HallFilters(
     val downloadStatus: String = "全部",
 ) : java.io.Serializable
 
+/** 平台筛选别名：displayName + platformIds + 常见兼容名（FC 兼容 NES）。 */
+private fun platformAliases(platform: String, categories: List<CategoryDescriptor>): Set<String> {
+    val category = categories.firstOrNull { it.displayName == platform }
+    val base = buildSet {
+        add(platform)
+        if (category != null) addAll(category.platformIds)
+    }
+    return if (platform == "FC") base + "NES" else base
+}
+
 @Composable
 internal fun HallScreen(
     games: List<LocalGame>,
@@ -131,6 +142,8 @@ internal fun HallScreen(
     coverReloadTick: Long,
     coverImageLoader: CoverImageLoader,
     onRefreshCovers: suspend () -> Unit,
+    indexCategories: List<CategoryDescriptor> = emptyList(),
+    searchIndexHits: suspend (String) -> Set<String>? = { null },
     onSelectSection: (String) -> Unit,
     onOpenGame: (LocalGame) -> Unit,
     onOpenSettings: () -> Unit,
@@ -148,14 +161,21 @@ internal fun HallScreen(
     val gridTopPadding = 28.dp
     val toolbarHeight = 56.dp
     val toolbarGap = 12.dp
-    val platformOptions = remember(games) {
-        val all = games
-            .mapNotNull { it.platform }
-            .flatMap { it.split("/", "、", "，", ",", ";").map { p -> p.trim() } }
-            .filter { it.isNotBlank() }
+    val platformOptions = remember(games, indexCategories) {
+        val fromIndex = indexCategories
+            .mapNotNull { it.displayName.takeIf { n -> n.isNotBlank() } }
             .distinct()
-            .sorted()
-        listOf("全部", "FC") + all.filter { it != "FC" && it != "全部" }
+        if (fromIndex.isNotEmpty()) {
+            listOf("全部") + fromIndex
+        } else {
+            val all = games
+                .mapNotNull { it.platform }
+                .flatMap { it.split("/", "、", "，", ",", ";").map { p -> p.trim() } }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .sorted()
+            listOf("全部", "FC") + all.filter { it != "FC" && it != "全部" }
+        }
     }
 
     val downloadedIds = remember(romDownloadManager, contentDownloadManager, games, downloadVersion) {
@@ -163,24 +183,38 @@ internal fun HallScreen(
             contentDownloadManager.isDownloaded(it.id) || romDownloadManager.isDownloaded(it)
         }.map { it.id }.toSet()
     }
+
+    // 全局搜索索引命中（中/英/日标题与 slug）；为空时不额外放宽过滤。
+    var indexHitIds by remember { mutableStateOf<Set<String>?>(null) }
+    LaunchedEffect(filters.query) {
+        val query = filters.query.trim()
+        indexHitIds = if (query.isEmpty()) null else searchIndexHits(query)
+    }
+
     val filtered = games.filter { game ->
         val sectionMatches = when (selectedSection) {
             "收藏" -> game.favorite
             "最近" -> game.lastPlayedAt != null
             else -> true
         }
-        val platformMatches = filters.platform == "全部" ||
-            game.platform.contains(filters.platform, ignoreCase = true) ||
-            (filters.platform == "FC" && game.platform.contains("NES", ignoreCase = true))
+    val platformMatches = filters.platform == "全部" || platformAliases(filters.platform, indexCategories).let { aliases ->
+        aliases.any { alias ->
+            game.platform.contains(alias, ignoreCase = true) ||
+                game.platformId.equals(alias, ignoreCase = true) ||
+                game.categoryId.equals(alias, ignoreCase = true)
+        }
+    }
         val statusMatches = when (filters.downloadStatus) {
             "已下载" -> game.id in downloadedIds
             "未下载" -> game.id !in downloadedIds
             else -> true
         }
-        val queryMatches = filters.query.isBlank() ||
+        val localQueryMatch = filters.query.isBlank() ||
             game.title.contains(filters.query, ignoreCase = true) ||
             game.category.contains(filters.query, ignoreCase = true) ||
             game.platform.contains(filters.query, ignoreCase = true)
+        val indexQueryMatch = indexHitIds?.let { game.id in it } ?: false
+        val queryMatches = filters.query.isBlank() || localQueryMatch || indexQueryMatch
         sectionMatches && platformMatches && statusMatches && queryMatches
     }
     val gamesShown = when (filters.sort) {

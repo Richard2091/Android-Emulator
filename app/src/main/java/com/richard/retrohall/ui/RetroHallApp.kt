@@ -30,6 +30,7 @@ import com.richard.retrohall.data.game.ResourceCatalogClient
 import com.richard.retrohall.data.game.RomDownloadManager
 import com.richard.retrohall.data.settings.UserSettingsStore
 import com.richard.retrohall.data.settings.ResourceSourceStore
+import com.richard.retrohall.domain.game.CategoryDescriptor
 import com.richard.retrohall.domain.game.CoverImageLoader
 import com.richard.retrohall.domain.game.GameDetail
 import com.richard.retrohall.domain.game.LocalGame
@@ -125,6 +126,14 @@ private fun RetroHallAppContent(
     val games by gameRepository.games.collectAsState(initial = emptyList())
     val settings by userSettingsStore.settings.collectAsState(initial = UserSettings())
 
+    // 在线 index 分类，驱动大厅平台筛选；失败时留空由 HallScreen 回退本地推断。
+    var indexCategories by remember { mutableStateOf<List<CategoryDescriptor>>(emptyList()) }
+    LaunchedEffect(resourceCatalogClient) {
+        indexCategories = runCatching {
+            resourceCatalogClient.fetchIndex().categories.filter { it.id != "all" }
+        }.getOrDefault(emptyList())
+    }
+
     fun openHall(section: String = "游戏库") {
         exitConfirmTick = 0L
         selectedHallSection = section
@@ -189,6 +198,8 @@ private fun RetroHallAppContent(
                         val changed = gameRepository.refreshCovers()
                         if (changed) coverReloadTick++
                     },
+                    indexCategories = indexCategories,
+                    searchIndexHits = { query -> gameRepository.searchByIndex(resourceCatalogClient, query) },
                     onSelectSection = {
                         exitConfirmTick = 0L
                         selectedHallSection = it
