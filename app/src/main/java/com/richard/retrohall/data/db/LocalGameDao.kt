@@ -75,4 +75,8 @@ interface LocalGameDao {
 
     @Query("DELETE FROM local_games WHERE id = :gameId")
     suspend fun deleteById(gameId: String)
+
+    /** 删除 id 不在保留集合中的游戏，用于同步后清理私有/遗留条目。 */
+    @Query("DELETE FROM local_games WHERE id NOT IN (:keepIds)")
+    suspend fun deleteAllExcept(keepIds: List<String>)
 }

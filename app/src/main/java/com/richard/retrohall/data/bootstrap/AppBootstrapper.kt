@@ -1,19 +1,20 @@
 package com.richard.retrohall.data.bootstrap
 
 import android.util.Log
-import com.richard.retrohall.data.assets.PrivateAssetInitializer
 import com.richard.retrohall.data.game.GameRepository
 import com.richard.retrohall.data.game.ResourceCatalogClient
 
+/**
+ * 启动引导：只消费数据源资源。
+ *
+ * 不注入任何私有资源（游戏与核心都来自数据源）。游戏目录走 v2 目录同步，
+ * 核心由核心管理弹窗按需从在线核心仓库下载。
+ */
 class AppBootstrapper(
-    private val privateAssetInitializer: PrivateAssetInitializer?,
     private val gameRepository: GameRepository,
     private val resourceCatalogClient: ResourceCatalogClient,
 ) {
     suspend fun bootstrap() {
-        privateAssetInitializer?.initialize()
-        gameRepository.seedIfEmpty()
-
         val synced = runCatching {
             gameRepository.syncFromResourceCatalog(resourceCatalogClient)
         }.onFailure { Log.w(TAG, "v2 目录同步失败", it) }.getOrDefault(0)

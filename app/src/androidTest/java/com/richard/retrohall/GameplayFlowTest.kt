@@ -23,11 +23,10 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 
 /**
- * 通过真实 UI 流程验证"能玩"：大厅搜索魂斗罗 → 详情页开始 → 核心加载并渲染帧。
+ * 通过真实 UI 流程验证"能玩"：数据源同步 → 搜索游戏 → 详情页开始 → 核心加载并渲染帧。
  *
- * GameScreen 有 60fps 帧动画，Compose 测试的语义树查询会因永不空闲而失败，
- * 因此本测试只负责驱动 UI 流程并断言游戏画面节点出现，不再依赖 logcat、
- * 外部截图、标记文件或固定长睡眠。
+ * 只消费数据源资源：游戏目录从在线 index.v2 同步，核心由核心管理按需从在线仓库下载。
+ * 本测试会真实下载 ROM 与核心，需要网络。
  */
 @RunWith(AndroidJUnit4::class)
 class GameplayFlowTest {
@@ -36,13 +35,12 @@ class GameplayFlowTest {
     val compose = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun startContraGameAndShowFrame() {
+    fun startDataSourceGameAndShowFrame() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        copyPrivateAssets(context)
         clearLogcat()
 
-        // 等待大厅出现侧边栏"游戏库"。
-        compose.waitUntil(timeoutMillis = 20_000) {
+        // 等待大厅出现侧边栏"游戏库"（数据源同步完成后才有内容）。
+        compose.waitUntil(timeoutMillis = 30_000) {
             compose.onAllNodes(hasText("游戏库")).fetchSemanticsNodes().isNotEmpty()
         }
 
@@ -55,18 +53,18 @@ class GameplayFlowTest {
             )
         }
 
-        // 等待搜索框并输入游戏名。
+        // 等待搜索框并输入游戏名（在线目录首条游戏，英文名便于索引命中）。
         compose.waitUntil(timeoutMillis = 10_000) {
             compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNode(hasSetTextAction()).performTextInput("魂斗罗")
+        compose.onNode(hasSetTextAction()).performTextInput("Donkey Kong")
 
         // 点击游戏卡片（tile 的 content-desc 是游戏标题）。
-        compose.waitUntil(timeoutMillis = 10_000) {
-            compose.onAllNodesWithContentDescription("魂斗罗").fetchSemanticsNodes().isNotEmpty()
+        compose.waitUntil(timeoutMillis = 20_000) {
+            compose.onAllNodesWithContentDescription("Donkey Kong").fetchSemanticsNodes().isNotEmpty()
         }
         println("[GameplayTest] tile visible, clicking")
-        compose.onAllNodesWithContentDescription("魂斗罗")[0].performTouchInput { click() }
+        compose.onAllNodesWithContentDescription("Donkey Kong")[0].performTouchInput { click() }
         compose.waitForIdle()
         val detailCount = compose.onAllNodes(hasText("最近游玩")).fetchSemanticsNodes().size
         val startCount = compose.onAllNodes(hasText("开始游戏")).fetchSemanticsNodes().size
@@ -78,7 +76,7 @@ class GameplayFlowTest {
         }
         println("[GameplayTest] detail page reached")
 
-        // 详情页点击"开始游戏"。
+        // 详情页点击"开始游戏"（首次会触发 ROM 下载；核心由核心管理自动下载并选中）。
         compose.waitUntil(timeoutMillis = 20_000) {
             compose.onAllNodes(hasText("开始游戏")).fetchSemanticsNodes().isNotEmpty()
         }
@@ -90,29 +88,12 @@ class GameplayFlowTest {
             "RetroHallApp: onStart ok",
             "RetroHallApp: route switched to Game",
             "RetroHallFrame: frame published",
-            timeoutMs = 30_000,
+            timeoutMs = 60_000,
         )
 
         val alive = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow != null
         println("[GameplayTest] app alive after starting game: $alive")
         assertTrue(alive)
-    }
-
-    private fun copyPrivateAssets(context: android.content.Context) {
-        val filesRoot = context.filesDir
-        val abi = android.os.Build.SUPPORTED_ABIS.first()
-        copyAsset(context, "retrohall_private/cores/$abi/fceumm_libretro_android.so",
-            java.io.File(filesRoot, "cores/$abi/fceumm_libretro_android.so"))
-        copyAsset(context, "retrohall_private/roms/contra.nes",
-            java.io.File(filesRoot, "roms/contra.nes"))
-    }
-
-    private fun copyAsset(context: android.content.Context, assetPath: String, target: java.io.File) {
-        if (target.isFile) return
-        target.parentFile?.mkdirs()
-        context.assets.open(assetPath).use { input ->
-            target.outputStream().use { output -> input.copyTo(output) }
-        }
     }
 
     private fun clearLogcat() {

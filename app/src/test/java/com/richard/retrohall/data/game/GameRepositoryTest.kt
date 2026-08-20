@@ -212,4 +212,69 @@ class GameRepositoryTest {
         assertEquals(existingCover.absolutePath, repository.games.first().first().coverPath)
         existingCover.delete()
     }
+
+    @Test
+    fun syncFromResourceCatalogRemovesPrivateResidue() = runTest {
+        // 预置一条私有资源残留（如旧的魂斗罗）。
+        database.localGameDao().upsertAll(
+            listOf(
+                LocalGame(
+                    id = "contra-j",
+                    title = "魂斗罗",
+                    platform = "NES",
+                    category = "Action",
+                    coverPath = "",
+                    romPath = "roms/contra.nes",
+                ).toEntity(),
+            ),
+        )
+
+        val indexJson = """
+            {
+              "schemaVersion": 2,
+              "catalogId": "retrogame",
+              "catalogName": "RetroGame",
+              "defaultCategoryId": "all",
+              "searchIndexUrl": "search-index.v2.json",
+              "categories": [
+                {"id": "all", "displayName": "全部", "runtimeFamily": "mixed",
+                 "listUrl": "all/manifest.list.v2.json", "gameCount": 1}
+              ]
+            }
+        """.trimIndent()
+        val listJson = """
+            {
+              "schemaVersion": 2,
+              "categoryId": "all",
+              "games": [
+                {
+                  "id": "fc-0001", "slug": "0001", "categoryId": "fc",
+                  "primaryPlatformId": "nes", "platformName": "FC",
+                  "runtimeFamily": "libretro",
+                  "title": {"zh": "大金刚", "en": "Donkey Kong"},
+                  "coverUrl": "cover.png", "detailUrl": "game.json",
+                  "tags": [], "releaseYear": 1983,
+                  "availability": {"binary": "public"}
+                }
+              ]
+            }
+        """.trimIndent()
+        val fetcher = object : HttpTextFetcher() {
+            override suspend fun fetch(url: String): String =
+                if (url.endsWith("index.v2.json")) indexJson else listJson
+        }
+        val client = ResourceCatalogClient(
+            com.richard.retrohall.data.settings.ResourceSourceStore(
+                ApplicationProvider.getApplicationContext(),
+            ),
+            fetcher,
+        )
+
+        val synced = repository.syncFromResourceCatalog(client)
+
+        assertEquals(1, synced)
+        val ids = repository.games.first().map { it.id }
+        assertTrue("应包含数据源游戏", "fc-0001" in ids)
+        assertFalse("私有残留应被清除", "contra-j" in ids)
+    }
 }

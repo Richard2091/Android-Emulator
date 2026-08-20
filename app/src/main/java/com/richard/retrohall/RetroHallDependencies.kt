@@ -6,7 +6,6 @@ import com.richard.retrohall.data.cache.CacheManager
 import com.richard.retrohall.data.bootstrap.AppBootstrapper
 import com.richard.retrohall.data.db.RetroHallDatabase
 import com.richard.retrohall.data.db.MIGRATION_4_5
-import com.richard.retrohall.data.assets.PrivateAssetInitializer
 import com.richard.retrohall.data.game.GitHubGameCatalogClient
 import com.richard.retrohall.data.game.ContentDownloadManager
 import com.richard.retrohall.data.game.CoverDownloader
@@ -50,7 +49,7 @@ class RetroHallDependencies private constructor(context: Context) {
     )
     val resourceSourceStore: ResourceSourceStore = ResourceSourceStore(appContext)
     val resourceCatalogClient: ResourceCatalogClient =
-        ResourceCatalogClient(resourceSourceStore)
+        ResourceCatalogClient(resourceSourceStore, context = appContext)
     val romDownloadManager: RomDownloadManager = RomDownloadManager(appContext)
     val contentDownloadManager: ContentDownloadManager = ContentDownloadManager(appContext)
     val coverDownloader: CoverDownloader = CoverDownloader(appContext)
@@ -60,9 +59,8 @@ class RetroHallDependencies private constructor(context: Context) {
     val coreDownloadManager: CoreDownloadManager = CoreDownloadManager(appContext)
     val emulatorSessionFactory: EmulatorSessionFactory = EmulatorSessionFactory(appContext, coreCatalogClient, coreSelectionStore)
     val userSettingsStore: UserSettingsStore = UserSettingsStore(appContext)
-    val privateAssetInitializer: PrivateAssetInitializer = PrivateAssetInitializer(appContext, database.localGameDao())
     val cacheManager: CacheManager = CacheManager(appContext)
-    val appBootstrapper: AppBootstrapper = AppBootstrapper(privateAssetInitializer, gameRepository, resourceCatalogClient)
+    val appBootstrapper: AppBootstrapper = AppBootstrapper(gameRepository, resourceCatalogClient)
     val coverImageLoader: CoverImageLoader = coverDownloader
     val saveStateStore: SaveStateStore = saveStateRepository
     val cacheMaintenance: CacheMaintenance = cacheManager

@@ -88,6 +88,9 @@ class GameRepository(
             if (remoteGames.isNotEmpty()) {
                 localGameDao.deleteLegacyGithubSource()
             }
+            // 只保留数据源条目：清理不在本次同步结果中的本地游戏（私有资源残留等）。
+            val remoteIds = remoteGames.map { it.id }
+            localGameDao.deleteAllExcept(remoteIds)
             remoteGames.size
         } catch (error: Exception) {
             0
