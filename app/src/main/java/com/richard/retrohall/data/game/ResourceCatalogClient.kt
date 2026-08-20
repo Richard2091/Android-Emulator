@@ -1,5 +1,6 @@
 package com.richard.retrohall.data.game
 
+import android.content.Context
 import com.richard.retrohall.data.settings.ResourceSourceStore
 import com.richard.retrohall.domain.game.CategoryCatalog
 import com.richard.retrohall.domain.game.CategoryDescriptor
@@ -7,10 +8,13 @@ import com.richard.retrohall.domain.game.GameDetail
 import com.richard.retrohall.domain.game.GameFileInfo
 import com.richard.retrohall.domain.game.GameListItem
 import com.richard.retrohall.domain.game.GameMedia
+import com.richard.retrohall.domain.game.SearchIndex
+import com.richard.retrohall.domain.game.SearchIndexEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.URI
 
 /**
@@ -22,8 +26,15 @@ import java.net.URI
 class ResourceCatalogClient(
     private val sourceStore: ResourceSourceStore,
     private val fetcher: HttpTextFetcher = HttpTextFetcher(),
+    context: Context? = null,
 ) {
     private var lastDirUrl: String = ResourceRepositoryConfig.GAME_CATALOG_BASE_URL
+
+    /** 详情磁盘缓存目录（metadata-cache/details/<gameId>.json）。无 Context 时不启用。 */
+    private val detailCacheRoot: File? = context?.applicationContext?.filesDir?.let { File(it, "metadata-cache/details") }
+
+    /** 搜索索引磁盘缓存目录（metadata-cache/details/search-index.v2.json）。无 Context 时不启用。 */
+    private val searchCacheRoot: File? = detailCacheRoot
 
     suspend fun fetchIndex(): CategoryCatalog = withContext(Dispatchers.IO) {
         val baseUrl = ResourceRepositoryConfig.gameBaseUrl(sourceStore.gameSourceUrl())
@@ -45,6 +56,86 @@ class ResourceCatalogClient(
         val json = JSONObject(fetcher.fetch(url))
         lastDirUrl = url.substringBeforeLast('/') + "/"
         parseDetail(json)
+    }
+
+    /**
+     * 拉取并缓存游戏详情：在线成功时写入磁盘缓存；离线失败时回退最近一次磁盘缓存。
+     *
+     * @param gameId 游戏 ID，用于磁盘缓存命名。
+     */
+    suspend fun fetchDetailCached(gameId: String, detailUrl: String): GameDetail = withContext(Dispatchers.IO) {
+        val cacheFile = detailCacheRoot?.let { File(it, "${safeFileName(gameId)}.json") }
+        val url = resolve(lastDirUrl, detailUrl)
+        try {
+            val json = JSONObject(fetcher.fetch(url))
+            lastDirUrl = url.substringBeforeLast('/') + "/"
+            val detail = parseDetail(json)
+            if (cacheFile != null) {
+                runCatching {
+                    cacheFile.parentFile?.mkdirs()
+                    cacheFile.writeText(json.toString(), Charsets.UTF_8)
+                }
+            }
+            detail
+        } catch (error: Exception) {
+            val cached = cacheFile?.takeIf { it.isFile && it.length() > 0L }?.readText(Charsets.UTF_8)
+            if (cached != null) {
+                parseDetail(JSONObject(cached))
+            } else {
+                throw error
+            }
+        }
+    }
+
+    /**
+     * 拉取并缓存全局搜索索引：在线成功时写入磁盘；离线失败时回退最近一次缓存。
+     */
+    suspend fun fetchSearchIndex(): SearchIndex = withContext(Dispatchers.IO) {
+        val baseUrl = ResourceRepositoryConfig.gameBaseUrl(sourceStore.gameSourceUrl())
+        val cacheFile = searchCacheRoot?.let { File(it, "search-index.v2.json") }
+        val url = baseUrl + "catalog/search-index.v2.json"
+        try {
+            val json = JSONObject(fetcher.fetch(url))
+            if (cacheFile != null) {
+                runCatching {
+                    cacheFile.parentFile?.mkdirs()
+                    cacheFile.writeText(json.toString(), Charsets.UTF_8)
+                }
+            }
+            parseSearchIndex(json)
+        } catch (error: Exception) {
+            val cached = cacheFile?.takeIf { it.isFile && it.length() > 0L }?.readText(Charsets.UTF_8)
+            if (cached != null) {
+                parseSearchIndex(JSONObject(cached))
+            } else {
+                throw error
+            }
+        }
+    }
+
+    private fun parseSearchIndex(json: JSONObject): SearchIndex {
+        val entriesArray = json.optJSONArray("entries") ?: JSONArray()
+        val entries = buildList {
+            for (i in 0 until entriesArray.length()) {
+                val e = entriesArray.getJSONObject(i)
+                add(
+                    SearchIndexEntry(
+                        id = e.optString("id"),
+                        slug = e.optString("slug"),
+                        categoryId = e.optString("categoryId"),
+                        title = e.optStringMap("title"),
+                        primaryPlatformId = e.optString("primaryPlatformId"),
+                        detailUrl = resolve(lastDirUrl, e.optString("detailUrl")),
+                        releaseYear = e.optInt("releaseYear", 0),
+                    ),
+                )
+            }
+        }
+        return SearchIndex(
+            schemaVersion = json.optInt("schemaVersion", 0),
+            gameCount = json.optInt("gameCount", 0),
+            entries = entries,
+        )
     }
 
     private fun resolve(baseDirUrl: String, relative: String): String {
@@ -183,3 +274,5 @@ private fun JSONObject.toStringMap(): Map<String, String> {
     keys().forEach { key -> result[key] = optString(key) }
     return result
 }
+
+private fun safeFileName(value: String): String = value.replace(Regex("""[\\/:*?"<>|]"""), "_")

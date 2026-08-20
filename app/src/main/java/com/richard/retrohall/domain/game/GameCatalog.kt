@@ -25,6 +25,29 @@ data class CategoryCatalog(
     fun category(id: String): CategoryDescriptor? = categories.firstOrNull { it.id == id }
 }
 
+/**
+ * 全局搜索索引条目：catalog/search-index.v2.json。
+ * 与列表项一致，可离线缓存后用于标题/别名过滤。
+ */
+data class SearchIndexEntry(
+    val id: String,
+    val slug: String,
+    val categoryId: String,
+    val title: Map<String, String>,
+    val primaryPlatformId: String,
+    val detailUrl: String,
+    val releaseYear: Int,
+) {
+    fun displayTitle(): String =
+        title["zh"]?.ifBlank { null } ?: title["en"] ?: title["ja"] ?: title.values.firstOrNull() ?: slug
+}
+
+data class SearchIndex(
+    val schemaVersion: Int,
+    val gameCount: Int,
+    val entries: List<SearchIndexEntry>,
+)
+
 data class GameListItem(
     val id: String,
     val slug: String,

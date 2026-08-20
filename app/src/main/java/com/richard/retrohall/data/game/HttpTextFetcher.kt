@@ -10,8 +10,8 @@ import java.net.URL
  *
  * 候选源由 [FcRomsSourceResolver] 展开（支持 Pages / CDN / raw 兜底）。
  */
-class HttpTextFetcher {
-    suspend fun fetch(url: String): String = withContext(Dispatchers.IO) {
+open class HttpTextFetcher {
+    open suspend fun fetch(url: String): String = withContext(Dispatchers.IO) {
         val candidates = FcRomsSourceResolver.expand(url)
         var lastError: Exception? = null
         for (attempt in 1..2) {
